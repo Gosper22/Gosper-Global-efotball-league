@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Gosper Global eFootball League</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header><b>GG ⚽</b><nav><a href="#home">Home</a><a href="#competitions">Competitions</a><a href="#register">Register</a><a href="#standings">Standings</a><a href="#admin">Admin</a></nav></header>
+<section id="home" class="hero"><div><small>SEASON 1</small><h1>Gosper Global<br><span>eFootball League</span></h1><p>The home of competitive eFootball tournaments.</p><a class="btn" href="#register">Register Player</a></div></section>
+<section id="competitions"><small>COMPETITIONS</small><h2>Choose Your Competition</h2><div class="grid"><article>🏆<h3>Premier League</h3><p>Home & Away league.</p></article><article>🥈<h3>Championship</h3><p>Home & Away league.</p></article><article>🌍<h3>UCL</h3><p>Groups → Knockout.</p></article></div></section>
+<section id="register"><small>SEASON 1</small><h2>Player Registration</h2><div class="rule"><b>⚠️ ONE PLAYER → ONE CLUB</b><p>Each player can register with only one club per season.</p></div><form id="form"><label>Player Name<input id="name" required></label><label>Player ID / Phone<input id="pid" required></label><label>Competition<select id="competition" required><option value="">Select</option><option>Premier League</option><option>Championship</option><option>UCL</option></select></label><label>Club<select id="club" required><option value="">Select club</option></select></label><button class="btn">Confirm Registration</button><p id="msg"></p></form></section>
+<section id="standings"><small>LIVE TABLE</small><h2>Premier League Standings</h2><div class="table"><table><tr><th>#</th><th>TEAM</th><th>MP</th><th>W</th><th>D</th><th>L</th><th>GD</th><th>PTS</th></tr><tr><td>1</td><td>Waiting...</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td></tr></table></div></section>
+<section id="admin"><small>CONTROL CENTER</small><h2>Admin Dashboard</h2><div class="grid admin"><article>👥<h3 id="count">0</h3><p>Registered Players</p></article><article>🏆<h3>3</h3><p>Competitions</p></article><article>⚽<h3>0</h3><p>Matches Played</p></article><article>📅<h3>Season 1</h3><p>Current Season</p></article></div></section>
+<footer><b>GOSPER GLOBAL</b><p>eFootball League • Season 1</p></footer>
+<script src="script.js"></script>
+</body>
+</html>
