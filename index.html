@@ -1,4 +1,101 @@
-<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Gosper Global eFootball League</title><link rel="stylesheet" href="style.css"></head><body><aside><b>⚽ GG</b><a>▦ Home</a><a>⚽ Competitions</a><a>♙ Players</a><a>▤ Fixtures</a><a>♜ Standings</a><a>🏆 Hall of Fame</a><a>⚙ Admin</a></aside><main><header><span>🔴 <b>Live</b>　 Season 1 • 2026</span><div>🔔　⚙　☾　🟢</div></header><section class="dash"><div class="head"><div><small>WELCOME TO THE LEAGUE</small><h1>Dashboard</h1></div><input id="search" placeholder="⌕ Search team or player"></div><div class="layout"><div><div class="hero"><div><label>● LIVE</label><small>GOSPER GLOBAL</small><h2>eFootball League<br><em>Season 1</em></h2><button>Explore Competition →</button></div></div><div class="panel"><small>COMPETITIONS</small><h2>Popular Competitions</h2><div class="cards"><article>🏆 <b>Premier League</b><small>League • Home & Away</small></article><article>🥈 <b>Championship</b><small>League • Home & Away</small></article><article>🌍 <b>UCL</b><small>Groups • Knockout</small></article></div></div><div class="panel"><small>PREMIER LEAGUE</small><h2>League Table</h2><table><thead><tr><th>POS</th><th>CLUB</th><th>MP</th><th>W</th><th>D</th><th>L</th><th>GD</th><th>PTS</th></tr></thead><tbody id="table"></tbody></table></div></div><div><div class="panel"><small>MATCH CENTER</small><h2>Upcoming Matches</h2><div id="matches"></div></div><div class="panel reg"><small>PLAYER REGISTRATION</small><h2>Join Season 1</h2><p>One player → one club</p><button onclick="document.getElementById('form').scrollIntoView()">Register Now</button></div></div></div><div class="panel" id="formbox"><small>SEASON 1</small><h2>Player Registration</h2><form id="form"><input id="name" placeholder="Player name" required><input id="pid" placeholder="Player ID / Phone" required><select id="competition"><option>Premier League</option><option>Championship</option><option>UCL</option></select><select id="club"></select><button>Confirm Registration</button></form><p id="msg"></p></div><div class="panel"><small>CONTROL CENTER</small><h2>Admin Overview</h2><div class="stats"><div><b id="count">0</b><small>Players</small></div><div><b>3</b><small>Competitions</small></div><div><b>0</b><small>Matches Played</small></div><div><b>1</b><small>Current Season</small></div></div></div></section><footer>GOSPER GLOBAL eFOOTBALL LEAGUE • SEASON 1</footer></main><script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-<script src="script.js"></script></body></html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0a1007">
+  <title>Gosper Global eFootball League</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <div class="brand-mark">GG</div>
+        <div><strong>GOSPER GLOBAL</strong><span>eFOOTBALL LEAGUE</span></div>
+      </div>
+      <div class="season-chip"><span class="dot"></span><div><small>CURRENT SEASON</small><b id="sideSeason">Season 1</b></div></div>
+      <nav id="nav">
+        <button class="nav-item active" data-page="dashboard"><span>⌂</span>Dashboard</button>
+        <button class="nav-item" data-page="competitions"><span>🏆</span>Competitions</button>
+        <button class="nav-item" data-page="teams"><span>⚽</span>Teams</button>
+        <button class="nav-item" data-page="fixtures"><span>▣</span>Fixtures</button>
+        <button class="nav-item" data-page="standings"><span>▤</span>Standings</button>
+        <button class="nav-item" data-page="players"><span>♙</span>Players</button>
+        <button class="nav-item" data-page="hall"><span>♛</span>Hall of Fame</button>
+        <button class="nav-item" data-page="news"><span>◉</span>News</button>
+      </nav>
+      <div class="sidebar-bottom">
+        <button class="admin-link" data-page="admin"><span>⚙</span>Admin Panel</button>
+        <div class="live-box"><span class="live-pulse"></span><div><b>League System</b><small>Firebase connected</small></div></div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <button class="mobile-menu" id="mobileMenu" aria-label="Open menu">☰</button>
+        <div class="top-left"><span class="status-dot"></span><b>League Live</b><span class="divider"></span><span id="topSeason">Season 1</span></div>
+        <div class="top-actions">
+          <label class="search"><span>⌕</span><input id="globalSearch" placeholder="Search team, player or match"></label>
+          <button class="icon-btn" title="Notifications">♢</button>
+          <button class="profile" id="profileBtn">G</button>
+        </div>
+      </header>
+
+      <section class="page dashboard-page active" data-page-content="dashboard">
+        <div class="page-head"><div><p class="eyebrow">WELCOME TO THE LEAGUE</p><h1>Dashboard</h1><p class="muted">Everything happening in Gosper Global eFootball League.</p></div><button class="primary" data-page="fixtures">View Fixtures →</button></div>
+        <div class="hero-grid">
+          <div class="hero-card">
+            <div class="hero-overlay"></div><div class="hero-content">
+              <span class="live-tag">● LIVE SYSTEM</span><p class="eyebrow">GOSPER GLOBAL</p><h2>eFootball<br><em>League</em></h2>
+              <p class="hero-copy">A complete home for competitions, players, fixtures, results and champions.</p>
+              <div class="hero-actions"><button class="primary" data-page="competitions">Explore Competitions</button><button class="ghost" data-page="standings">View Standings</button></div>
+            </div>
+            <div class="hero-ball">⚽</div>
+          </div>
+          <div class="side-stat-card"><span class="eyebrow">SEASON STATUS</span><div class="season-status"><span class="big-dot"></span><div><h3 id="seasonStatus">Ongoing</h3><p id="seasonDates">Season 1 • 2026</p></div></div><div class="stat-line"><span>Players registered</span><b id="dashPlayers">0</b></div><div class="stat-line"><span>Published fixtures</span><b id="dashFixtures">0</b></div><div class="stat-line"><span>Completed matches</span><b id="dashPlayed">0</b></div></div>
+        </div>
+
+        <div class="section-head"><div><p class="eyebrow">LEAGUE ECOSYSTEM</p><h2>Popular Competitions</h2></div><button class="text-btn" data-page="competitions">View all →</button></div>
+        <div class="competition-grid">
+          <button class="competition-card" data-competition="Premier League"><span class="comp-icon">PL</span><div><h3>Premier League</h3><p>Home & Away • League</p></div><b>→</b></button>
+          <button class="competition-card" data-competition="Championship"><span class="comp-icon">CH</span><div><h3>Championship</h3><p>Home & Away • League</p></div><b>→</b></button>
+          <button class="competition-card" data-competition="UCL"><span class="comp-icon ucl">★</span><div><h3>UCL</h3><p>Groups • Knockout</p></div><b>→</b></button>
+        </div>
+
+        <div class="two-col">
+          <div class="panel"><div class="panel-head"><div><p class="eyebrow">PREMIER LEAGUE</p><h2>League Table</h2></div><button class="text-btn" data-page="standings">Full table →</button></div><div class="table-wrap"><table><thead><tr><th>#</th><th>CLUB</th><th>MP</th><th>W</th><th>D</th><th>L</th><th>GD</th><th>PTS</th></tr></thead><tbody id="dashTable"><tr><td colspan="8" class="empty">No published standings yet.</td></tr></tbody></table></div></div>
+          <div class="panel"><div class="panel-head"><div><p class="eyebrow">MATCH CENTER</p><h2>Upcoming Matches</h2></div><button class="text-btn" data-page="fixtures">All fixtures →</button></div><div id="dashMatches" class="match-list"><div class="empty-block">No fixtures published yet.</div></div></div>
+        </div>
+
+        <div class="panel register-panel"><div class="register-copy"><p class="eyebrow">PLAYER REGISTRATION</p><h2>Join the current season</h2><p>Choose one competition and one club. Your Player ID/phone keeps your registration unique for the season.</p></div><button class="primary" id="registerCta">Register Player →</button></div>
+      </section>
+
+      <section class="page" data-page-content="competitions"><div class="page-head"><div><p class="eyebrow">COMPETITIONS</p><h1>Choose your competition</h1><p class="muted">Follow teams, fixtures, tables and results.</p></div></div><div class="competition-grid large"><button class="competition-card" data-competition="Premier League"><span class="comp-icon">PL</span><div><h3>Premier League</h3><p>Flexible teams • Home & Away</p></div><b>→</b></button><button class="competition-card" data-competition="Championship"><span class="comp-icon">CH</span><div><h3>Championship</h3><p>Flexible teams • Home & Away</p></div><b>→</b></button><button class="competition-card" data-competition="UCL"><span class="comp-icon ucl">★</span><div><h3>UCL</h3><p>Admin-selected teams • Groups & Knockout</p></div><b>→</b></button></div><div class="panel competition-detail" id="competitionDetail"><div class="empty-block">Select a competition above.</div></div></section>
+
+      <section class="page" data-page-content="teams"><div class="page-head"><div><p class="eyebrow">CLUB DIRECTORY</p><h1>Teams</h1><p class="muted">Club identity, logos and competition availability.</p></div><label class="search local-search"><span>⌕</span><input id="teamSearch" placeholder="Search clubs"></label></div><div id="teamsGrid" class="teams-grid"><div class="loading">Loading teams…</div></div></section>
+
+      <section class="page" data-page-content="fixtures"><div class="page-head"><div><p class="eyebrow">MATCH CENTER</p><h1>Fixtures & Results</h1><p class="muted">Published matches appear here automatically from Firebase.</p></div><div class="filters"><select id="fixtureCompetition"><option value="all">All competitions</option><option>Premier League</option><option>Championship</option><option>UCL</option></select><select id="fixtureStatus"><option value="all">All matches</option><option value="upcoming">Upcoming</option><option value="played">Played</option></select></div></div><div id="fixturesList" class="fixtures-list"><div class="empty-block">No fixtures published yet.</div></div></section>
+
+      <section class="page" data-page-content="standings"><div class="page-head"><div><p class="eyebrow">TABLES</p><h1>Standings</h1><p class="muted">Points and goal difference are calculated from published results.</p></div><select id="standingsCompetition"><option>Premier League</option><option>Championship</option><option>UCL</option></select></div><div class="panel"><div class="table-wrap"><table class="standings-table"><thead><tr><th>POS</th><th>CLUB</th><th>MP</th><th>W</th><th>D</th><th>L</th><th>GF</th><th>GA</th><th>GD</th><th>PTS</th></tr></thead><tbody id="standingsTable"><tr><td colspan="10" class="empty">No published results yet.</td></tr></tbody></table></div></div></section>
+
+      <section class="page" data-page-content="players"><div class="page-head"><div><p class="eyebrow">REGISTERED PLAYERS</p><h1>Players</h1><p class="muted">Current-season registrations.</p></div><button class="primary" id="registerPlayerBtn">Register Player</button></div><div id="playersGrid" class="players-grid"><div class="empty-block">Loading players…</div></div></section>
+
+      <section class="page" data-page-content="hall"><div class="page-head"><div><p class="eyebrow">LEGACY</p><h1>Hall of Fame</h1><p class="muted">Champions recorded by Season.</p></div></div><div id="hallGrid" class="hall-grid"><div class="empty-block">No champions published yet.</div></div></section>
+
+      <section class="page" data-page-content="news"><div class="page-head"><div><p class="eyebrow">LEAGUE NEWS</p><h1>News & Announcements</h1><p class="muted">Official updates published by the league.</p></div></div><div id="newsGrid" class="news-grid"><div class="empty-block">No announcements published yet.</div></div></section>
+
+      <section class="page" data-page-content="admin"><div class="page-head"><div><p class="eyebrow">CONTROL CENTER</p><h1>Admin Panel</h1><p class="muted">Manage seasons, clubs, fixtures, results, news and Hall of Fame.</p></div><button class="primary" id="adminLoginBtn">Admin Login</button></div><div id="adminArea" class="admin-area"><div class="admin-lock"><div class="lock-icon">⚙</div><h2>Admin access required</h2><p>Sign in with the administrator account to manage league data.</p><button class="primary" id="adminLoginBtn2">Sign in</button></div></div></section>
+
+      <footer>GOSPER GLOBAL eFOOTBALL LEAGUE <span>•</span> <span id="footerSeason">Season 1</span></footer>
+    </main>
+  </div>
+
+  <div class="modal-backdrop" id="registerModal" hidden><div class="modal"><button class="modal-close" id="closeRegister">×</button><p class="eyebrow">PLAYER REGISTRATION</p><h2>Join the current season</h2><p class="muted">One player → one club per season.</p><form id="registrationForm"><label>Player Name<input id="name" required autocomplete="name" placeholder="Enter player name"></label><label>Player ID / Phone<input id="pid" required autocomplete="tel" placeholder="Enter Player ID or phone"></label><label>Competition<select id="competition"><option>Premier League</option><option>Championship</option><option>UCL</option></select></label><label>Club<div class="club-picker"><input id="clubSearch" placeholder="Search club"><select id="club" required size="6"></select></div></label><div id="registrationMsg" class="form-msg" aria-live="polite"></div><button class="primary full" type="submit">Confirm Registration</button></form></div></div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
