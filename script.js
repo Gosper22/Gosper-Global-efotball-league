@@ -66,9 +66,55 @@ const ALL_COMPETITIONS=[...MAJOR_LEAGUES,'Championship','UCL'];
 function qualifiedUCLTeams(){return MAJOR_LEAGUES.flatMap(league=>table(league).slice(0,2).map((r,i)=>({name:r.team,league,rank:i+1})));}
 
 function activeTeams(comp){return teamObjects(comp).filter(t=>isCompActive(comp))}
-function populateClubPicker(q=''){const comp=$('competition').value, query=q.toLowerCase();const teams=activeTeams(comp).filter(t=>t.name.toLowerCase().includes(query));$('club').innerHTML=teams.map(t=>`<option value="${esc(t.name)}">${esc(t.name)}</option>`).join('');}
+function populateClubPicker(q=''){
+ const comp=$('competition').value, query=q.toLowerCase();
+ const registeredClubs=new Set(
+   state.players
+     .filter(p=>p.seasonId===SEASON_ID && p.competition===comp && p.status!=='cancelled')
+     .map(p=>String(p.club||'').trim().toLowerCase())
+ );
+ const teams=activeTeams(comp).filter(t=>
+   t.name.toLowerCase().includes(query) &&
+   !registeredClubs.has(t.name.trim().toLowerCase())
+ );
+ $('club').innerHTML=teams.length
+   ? teams.map(t=>`<option value="${esc(t.name)}">${esc(t.name)}</option>`).join('')
+   : '<option value="">No available clubs</option>';
+}
 async function ensureAnon(){if(auth.currentUser)return true;try{await auth.signInAnonymously();return true}catch(e){console.error(e);return false}}
-$('registrationForm')?.addEventListener('submit',async e=>{e.preventDefault();const m=$('registrationMsg');m.className='form-msg';m.textContent='Registering…';if(!(await ensureAnon())){m.className='form-msg error';m.textContent='Firebase Anonymous sign-in is not enabled.';return;}const name=$('name').value.trim(),raw=$('pid').value.trim(),key=raw.toLowerCase().replace(/\s+/g,''),competition=$('competition').value,club=$('club').value;if(!name||!key||!club){m.className='form-msg error';m.textContent='Fill all required fields.';return;}const ref=db.collection('players').doc(`${SEASON_ID}_${key.replace(/[^a-z0-9_-]/g,'_')}`);try{const snap=await ref.get();if(snap.exists){m.className='form-msg error';m.textContent=`Already registered with ${snap.data().club||'another club'} for ${state.season?.name||DEFAULT_SEASON}.`;return;}await ref.set({name,playerId:raw,playerIdKey:key,competition,club,seasonId:SEASON_ID,status:'active',createdAt:firebase.firestore.FieldValue.serverTimestamp()});m.className='form-msg ok';m.textContent=`Registration successful — ${club}`;e.target.reset();populateClubPicker('');await loadData();setTimeout(closeRegister,900);}catch(err){console.error(err);m.className='form-msg error';m.textContent='Registration failed. Check Firestore Rules.';}});
+$('registrationForm')?.addEventListener('submit',async e=>{e.preventDefault();const m=$('registrationMsg');m.className='form-msg';m.textContent='Registering…';if(!(await ensureAnon())){m.className='form-msg error';m.textContent='Firebase Anonymous sign-in is not enabled.';return;}const name=$('name').value.trim(),raw=$('pid').value.trim(),key=raw.toLowerCase().replace(/\s+/g,''),competition=$('competition').value,club=$('club').value;if(!name||!key||!club){m.className='form-msg error';m.textContent='Fill all required fields.';return;}const playerDocId=`${SEASON_ID}_${key.replace(/[^a-z0-9_-]/g,'_')}`;
+const ref=db.collection('players').doc(playerDocId);
+const lockKey=`${SEASON_ID}__${competition}__${club}`.toLowerCase().replace(/[^a-z0-9_-]/g,'_');
+const lockRef=db.collection('playerTeamLocks').doc(lockKey);
+try{
+  if(state.players.some(p=>p.seasonId===SEASON_ID&&p.competition===competition&&String(p.club||'').trim().toLowerCase()===club.trim().toLowerCase()&&p.status!=='cancelled')){
+    m.className='form-msg error';
+    m.textContent=`${club} is already registered by another player in ${competition}. Choose another club.`;
+    populateClubPicker('');
+    return;
+  }
+  await db.runTransaction(async tx=>{
+    const snap=await tx.get(ref);
+    if(snap.exists) throw new Error('PLAYER_EXISTS');
+    const lockSnap=await tx.get(lockRef);
+    if(lockSnap.exists) throw new Error('TEAM_TAKEN');
+
+    tx.set(ref,{name,playerId:raw,playerIdKey:key,lockId:lockKey,competition,club,seasonId:SEASON_ID,status:'active',createdAt:firebase.firestore.FieldValue.serverTimestamp()});
+    tx.set(lockRef,{playerDocId,playerIdKey:key,competition,club,seasonId:SEASON_ID,status:'active',createdAt:firebase.firestore.FieldValue.serverTimestamp()});
+  });
+  m.className='form-msg ok';
+  m.textContent=`Registration successful — ${club}`;
+  e.target.reset();
+  populateClubPicker('');
+  await loadData();
+  setTimeout(closeRegister,900);
+}catch(err){
+  console.error(err);
+  m.className='form-msg error';
+  if(err.message==='PLAYER_EXISTS') m.textContent=`This Player ID is already registered for ${state.season?.name||DEFAULT_SEASON}.`;
+  else if(err.message==='TEAM_TAKEN') m.textContent=`${club} is already registered by another player in ${competition}. Choose another club.`;
+  else m.textContent='Registration failed. Please try again.';
+}});
 
 async function getAll(c){try{const s=await db.collection(c).get();return s.docs.map(d=>({id:d.id,...d.data()}));}catch(e){console.warn(c,e);return[];}}
 async function loadData(){const [teams,players,fixtures,news,hall,seasons]=await Promise.all(['teams','players','fixtures','news','hallOfFame','seasons'].map(getAll));state.teams=teams;state.players=players.filter(p=>p.seasonId===SEASON_ID||!p.seasonId);state.fixtures=fixtures;state.news=news;state.hall=hall;state.season=seasons.find(s=>s.id===SEASON_ID)||seasons.find(s=>s.current===true)||{id:SEASON_ID,name:DEFAULT_SEASON,status:'Ongoing'};renderAll();if(state.admin)renderAdmin();}
