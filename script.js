@@ -62,7 +62,6 @@ function teamObjects(comp){
 }
 function catalogObjects(){return catalog.slice();}
 const MAJOR_LEAGUES=['Premier League','LaLiga','Serie A','Bundesliga','Ligue 1','Eredivisie','NBC Premier League','Egypt League'];
-ALL_COMPETITIONS=MAJOR_LEAGUES+['Championship','UCL']
 const ALL_COMPETITIONS=[...MAJOR_LEAGUES,'Championship','UCL'];
 function qualifiedUCLTeams(){return MAJOR_LEAGUES.flatMap(league=>table(league).slice(0,2).map((r,i)=>({name:r.team,league,rank:i+1})));}
 
