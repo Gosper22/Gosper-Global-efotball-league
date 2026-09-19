@@ -1,21 +1,14 @@
-Gosper Global eFootball League — Firebase Connected
-=====================================================
+GOSPER GLOBAL eFOOTBALL LEAGUE - WEBSITE OVERHAUL
 
-Connected to Firebase project:
-gospel-global-efootball
+This version keeps the Firebase project configuration supplied by the owner and redesigns the public site as a responsive league dashboard.
 
-Current connection:
-- Firebase Web SDK (compat/CDN)
-- Anonymous Authentication for public player registration
-- Firestore `players` collection
-- One-player-per-season enforced by document ID
-- Player count is read from Firestore
+Included:
+- Dashboard, competitions, teams, fixtures, standings, players, Hall of Fame and news sections
+- Firebase player registration with one registration document per Player ID/phone + season
+- Firebase reads for teams, fixtures, results, news and Hall of Fame
+- Team logo support through team logo URLs; Firebase team documents can override the catalog
+- Responsive mobile navigation
+- Admin login entry point
 
-IMPORTANT SETUP IN FIREBASE:
-1. Authentication -> Sign-in method -> enable Anonymous.
-2. Firestore Database -> Rules -> paste firestore.rules and Publish.
-3. Then upload these website files to GitHub Pages/hosting.
-
-The static club list is still the starter UI. The next development step is the
-Admin Panel, where the admin will control seasons, available clubs, competitions,
-fixtures, results, news and Hall of Fame.
+Important:
+The current Firestore rules must permit the collections used by the public site to be read. Player creation uses the anonymous-authenticated user. Admin write controls require admin-specific Firestore rules/authorization; this public build does not grant write access to admin collections by itself.
