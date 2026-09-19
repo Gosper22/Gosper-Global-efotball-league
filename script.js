@@ -125,7 +125,39 @@ function table(comp){const map=new Map(teamObjects(comp).map(t=>[t.name,{team:t.
 function rowHtml(r,i){return `<tr><td><b>${i+1}</b></td><td><div class="team-cell">${logo(r.team,true)}<b>${esc(r.team)}</b></div></td><td>${r.mp}</td><td>${r.w}</td><td>${r.d}</td><td>${r.l}</td><td>${r.gf}</td><td>${r.ga}</td><td>${r.gd}</td><td><b>${r.pts}</b></td></tr>`;}
 function renderStandings(){const c=$('standingsCompetition')?.value||'Premier League';const rows=table(c);$('standingsTable').innerHTML=rows.length?rows.map(rowHtml).join(''):`<tr><td colspan="10" class="empty">No results published yet.</td></tr>`;}
 function fixtureHtml(f,admin=false){const [h,a]=teamsInFixture(f),s=score(f);return `<article class="fixture-card"><div class="fixture-meta"><span class="competition-pill">${esc(compOf(f))}</span><span>${dateText(f.date||f.kickoff)}</span><span>${esc(f.round||'Match')}</span></div><div class="fixture-teams"><div class="fixture-team">${logo(h)}<strong>${esc(h)}</strong></div><div class="fixture-score"><b>${s?`${s.h} - ${s.a}`:'VS'}</b><small>${s?'FULL TIME':'UPCOMING'}</small></div><div class="fixture-team">${logo(a)}<strong>${esc(a)}</strong></div></div>${admin?`<div class="fixture-admin-actions"><button class="mini-btn" onclick="editFixture('${f.id}')">Edit</button><button class="mini-btn danger" onclick="deleteFixture('${f.id}')">Delete</button></div>`:''}</article>`;}
-function renderFixtures(){let fs=state.fixtures.filter(f=>{const c=compOf(f);const [h,a]=teamsInFixture(f);return !!teamObjects(c).find(t=>t.name===h)&&!!teamObjects(c).find(t=>t.name===a);});const c=$('fixtureCompetition')?.value||'all',st=$('fixtureStatus')?.value||'all';if(c!=='all')fs=fs.filter(f=>compOf(f)===c);if(st==='upcoming')fs=fs.filter(f=>!score(f));if(st==='played')fs=fs.filter(f=>!!score(f));fs.sort((a,b)=>(dateObj(a.date||a.kickoff)||0)-(dateObj(b.date||b.kickoff)||0));$('fixturesList').innerHTML=fs.length?fs.map(f=>fixtureHtml(f)).join(''):`<div class="empty-block">No fixtures found.</div>`;}
+function renderFixtures(){
+ let fs=state.fixtures.filter(f=>{const c=compOf(f);const [h,a]=teamsInFixture(f);return !!teamObjects(c).find(t=>t.name===h)&&!!teamObjects(c).find(t=>t.name===a);});
+ const c=$('fixtureCompetition')?.value||'all',st=$('fixtureStatus')?.value||'all';
+ if(c!=='all')fs=fs.filter(f=>compOf(f)===c);
+ if(st==='upcoming')fs=fs.filter(f=>!score(f));
+ if(st==='played')fs=fs.filter(f=>!!score(f));
+ fs.sort((a,b)=>{
+   const ra=parseInt(String(a.round||'').match(/\d+/)?.[0]||'9999',10);
+   const rb=parseInt(String(b.round||'').match(/\d+/)?.[0]||'9999',10);
+   return ra-rb || (dateObj(a.date||a.kickoff)||0)-(dateObj(b.date||b.kickoff)||0);
+ });
+ const competitions=new Map();
+ fs.forEach(f=>{
+   const comp=compOf(f), round=f.round||'Matchday';
+   if(!competitions.has(comp))competitions.set(comp,new Map());
+   const days=competitions.get(comp);
+   if(!days.has(round))days.set(round,[]);
+   days.get(round).push(f);
+ });
+ const compOrder=[...MAJOR_LEAGUES,'Championship','UCL'];
+ const ordered=[...competitions.entries()].sort((a,b)=>{
+   const ia=compOrder.indexOf(a[0]), ib=compOrder.indexOf(b[0]);
+   return (ia<0?999:ia)-(ib<0?999:ib);
+ });
+ $('fixturesList').innerHTML=ordered.length?ordered.map(([comp,days])=>{
+   const orderedDays=[...days.entries()].sort((a,b)=>{
+     const ra=parseInt(String(a[0]).match(/\d+/)?.[0]||'9999',10);
+     const rb=parseInt(String(b[0]).match(/\d+/)?.[0]||'9999',10);
+     return ra-rb;
+   });
+   return `<section class="competition-fixtures-block"><div class="competition-fixtures-heading"><span>COMPETITION</span><h2>${esc(comp)}</h2></div>${orderedDays.map(([round,games])=>`<div class="matchday-block"><div class="matchday-title"><h3>${esc(round)}</h3><span>${games.length} match${games.length===1?'':'es'}</span></div><div class="matchday-row" style="--match-count:${games.length}">${games.map(f=>fixtureHtml(f)).join('')}</div></div>`).join('')}</section>`;
+ }).join(''):`<div class="empty-block">No fixtures found.</div>`;
+}
 function renderTeams(){const q=($('teamSearch')?.value||'').toLowerCase(),c=$('teamCompetition')?.value||'all';let ts=teamObjects().filter(t=>!q||t.name.toLowerCase().includes(q));if(c!=='all')ts=ts.filter(t=>teamCompetitions(t).includes(c));$('teamsGrid').innerHTML=ts.map(t=>`<article class="team-card"><div class="team-logo-wrap">${logo(t.name)}</div><div><h3>${esc(t.name)}</h3><p>${esc(t.competition||'Competition TBA')}</p></div><span class="status-dot ${t.enabled===false?'off':''}">${t.enabled===false?'Disabled':'Available'}</span></article>`).join('')||`<div class="empty-block">No teams found.</div>`;}
 function renderPlayers(){const ps=state.players.slice().sort((a,b)=>String(a.name).localeCompare(String(b.name)));$('playersGrid').innerHTML=ps.length?ps.map(p=>`<article class="player-card"><div class="player-avatar">${esc(initials(p.name))}</div><div><h3>${esc(p.name)}</h3><p>${esc(p.club||'Club TBA')}</p><small>${esc(p.competition||'')} • ${esc(state.season?.name||DEFAULT_SEASON)}</small></div></article>`).join(''):`<div class="empty-block">No player registrations yet.</div>`;}
 function renderHall(){const hs=state.hall.slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));$('hallGrid').innerHTML=hs.length?hs.map(h=>`<article class="hall-card"><div class="trophy">🏆</div><span>${esc(h.season||h.seasonName||DEFAULT_SEASON)}</span><h2>${esc(h.winner||h.team||'Champion')}</h2><p>${esc(h.competition||'Competition')} ${h.date?'• '+esc(h.date):''}</p></article>`).join(''):`<div class="empty-block">No champions published yet.</div>`;}
