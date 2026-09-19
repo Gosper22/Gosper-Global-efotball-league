@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://gosper22.github.io/Gosper-Global-efotball-league/sitemap.xml
