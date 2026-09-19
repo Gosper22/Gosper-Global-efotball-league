@@ -23,3 +23,14 @@
 @media(max-width:780px){.matchday-row{grid-template-columns:repeat(var(--match-count),minmax(190px,1fr))}.matchday-row .fixture-card{min-width:190px}.matchday-row .fixture-teams{grid-template-columns:1fr 48px 1fr}.matchday-row .fixture-team{font-size:9px}}
 /* Fixture hierarchy: each competition is fully separated; Matchday rows never mix leagues. */
 .competition-fixtures-block{margin:0 0 34px}.competition-fixtures-heading{padding:16px 6px 12px;margin-bottom:4px;border-bottom:2px solid var(--line)}.competition-fixtures-heading span{display:block;color:var(--accent);font-size:9px;font-weight:800;letter-spacing:1.8px;text-transform:uppercase;margin-bottom:3px}.competition-fixtures-heading h2{margin:0;font-size:22px}.competition-fixtures-block .matchday-block{margin-bottom:20px}.competition-fixtures-block .matchday-title{display:flex;align-items:center;justify-content:space-between;gap:12px}.competition-fixtures-block .matchday-title span{color:var(--muted);font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase}
+
+/* Dashboard fixture hierarchy: Competition -> Matchday -> all games. */
+.dashboard-fixture-competition{display:block;width:100%;margin:0 0 26px}
+.dashboard-fixture-heading{padding:4px 2px 10px;border-bottom:2px solid var(--line);margin-bottom:8px}
+.dashboard-fixture-heading span{display:block;color:var(--accent);font-size:8px;font-weight:800;letter-spacing:1.6px;text-transform:uppercase;margin-bottom:3px}
+.dashboard-fixture-heading h3{margin:0;font-size:18px}
+.dashboard-fixture-matchday{margin-bottom:18px}
+.dashboard-matchday-title{display:flex;align-items:center;justify-content:space-between;padding:8px 2px;color:var(--text)}
+.dashboard-matchday-title b{font-size:12px}
+.dashboard-matchday-title span{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px}
+.dashboard-fixture-games{display:grid;gap:12px}
