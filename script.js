@@ -185,13 +185,82 @@ function adminTeams(c){
  for(const t of all){const enabled=document.querySelector(`[data-team-enabled="${CSS.escape(t.name)}"]`).checked;const ref=db.collection('teams').doc(t.name.toLowerCase().replace(/[^a-z0-9]+/g,'-'));batch.set(ref,{name:t.name,competitions:[t.competition],competition:t.competition,logo:t.logo||'',enabled,seasonId:SEASON_ID},{merge:true});}
  await batch.commit();await adminSave('seasons',SEASON_ID,{activeCompetitions:ALL_COMPETITIONS});await loadData();alert('New club structure applied.');adminTab('teams');}catch(e){console.error(e);alert('Could not apply club structure. Check Firestore Rules.');}};
 }
-function adminFixtures(c){c.innerHTML=`<div class="admin-heading"><div><p class="eyebrow">FIXTURE ENGINE</p><h2>Domestic fixtures</h2><p>Generate Home & Away for any 6-team major league or the 16-team Championship. UCL group fixtures are generated in the UCL Groups tab.</p></div><div class="admin-actions"><select id="genComp">${[...MAJOR_LEAGUES,'Championship'].map(x=>`<option>${x}</option>`).join('')}</select><button class="primary" id="generateFixtures">Generate Home & Away</button></div></div><div class="form-grid admin-form"><select id="fxComp">${ALL_COMPETITIONS.map(x=>`<option>${x}</option>`).join('')}</select><input id="fxHome" placeholder="Home team"><input id="fxAway" placeholder="Away team"><input id="fxDate" type="date"><input id="fxRound" placeholder="Round / Matchday"><button class="primary" id="addFixture">Add Fixture</button></div><div class="admin-list">${state.fixtures.slice().sort((a,b)=>(dateObj(a.date)||0)-(dateObj(b.date)||0)).map(f=>fixtureHtml(f,true)).join('')||'<p class="muted">No fixtures yet.</p>'}</div>`;$('generateFixtures').onclick=()=>generateFixtures($('genComp').value);$('addFixture').onclick=async()=>{const id=db.collection('fixtures').doc().id;await adminSave('fixtures',id,{competition:$('fxComp').value,homeTeam:$('fxHome').value.trim(),awayTeam:$('fxAway').value.trim(),date:$('fxDate').value,round:$('fxRound').value||'Matchday',seasonId:SEASON_ID});adminTab('fixtures');};}
-async function generateFixtures(comp){const ts=teamObjects(comp).map(t=>t.name);if(ts.length<2){alert('At least 2 teams are required.');return;}const existing=new Set(state.fixtures.filter(f=>compOf(f)===comp).map(f=>`${f.homeTeam||f.home}|${f.awayTeam||f.away}`));let arr=ts.slice();if(arr.length%2)arr.push(null);const n=arr.length,rounds=n-1,half=n/2,batch=db.batch();let count=0;
-const addRound=async (r,secondLeg=false)=>{for(let i=0;i<half;i++){const a=arr[i],b=arr[n-1-i];if(!a||!b)continue;const h=secondLeg?b:a,aw=secondLeg?a:b,key=`${h}|${aw}`;if(existing.has(key))continue;const ref=db.collection('fixtures').doc();batch.set(ref,{competition:comp,homeTeam:h,awayTeam:aw,round:`Matchday ${r+1}`,date:'',seasonId:SEASON_ID,createdAt:firebase.firestore.FieldValue.serverTimestamp()});existing.add(key);count++;}};
-for(let r=0;r<rounds;r++){await addRound(r,false);arr=[arr[0],arr[n-1],...arr.slice(1,n-1)];}
-arr=ts.slice();if(arr.length%2)arr.push(null);
-for(let r=0;r<rounds;r++){await addRound(r+rounds,true);arr=[arr[0],arr[n-1],...arr.slice(1,n-1)];}
-await batch.commit();await loadData();alert(`${count} fixtures generated for ${comp}.`);}
+function adminFixtures(c){
+ c.innerHTML=`<div class="admin-heading"><div><p class="eyebrow">FIXTURE ENGINE</p><h2>Domestic fixtures</h2><p>Generate a proper Home & Away round-robin for every domestic league. Each Matchday contains each pairing once; the return leg is placed in the second half of the season.</p></div><div class="admin-actions"><select id="genComp">${[...MAJOR_LEAGUES,'Championship'].map(x=>`<option>${x}</option>`).join('')}</select><button class="primary" id="generateFixtures">Generate Home & Away</button><button class="primary danger" id="deleteAllFixtures">Delete ALL Fixtures</button></div></div><div class="form-grid admin-form"><select id="fxComp">${ALL_COMPETITIONS.map(x=>`<option>${x}</option>`).join('')}</select><input id="fxHome" placeholder="Home team"><input id="fxAway" placeholder="Away team"><input id="fxDate" type="date"><input id="fxRound" placeholder="Round / Matchday"><button class="primary" id="addFixture">Add Fixture</button></div><div class="admin-list">${state.fixtures.slice().sort((a,b)=>(dateObj(a.date)||0)-(dateObj(b.date)||0)).map(f=>fixtureHtml(f,true)).join('')||'<p class="muted">No fixtures yet.</p>'}</div>`;
+ $('generateFixtures').onclick=()=>generateFixtures($('genComp').value);
+ $('deleteAllFixtures').onclick=deleteAllFixtures;
+ $('addFixture').onclick=async()=>{const id=db.collection('fixtures').doc().id;await adminSave('fixtures',id,{competition:$('fxComp').value,homeTeam:$('fxHome').value.trim(),awayTeam:$('fxAway').value.trim(),date:$('fxDate').value,round:$('fxRound').value||'Matchday',seasonId:SEASON_ID});adminTab('fixtures');};
+}
+async function deleteAllFixtures(){
+ if(!state.fixtures.length){alert('There are no fixtures to delete.');return;}
+ if(!confirm(`Delete ALL ${state.fixtures.length} fixtures from every competition? This cannot be undone.`))return;
+ try{
+  const refs=state.fixtures.map(f=>db.collection('fixtures').doc(f.id));
+  for(let i=0;i<refs.length;i+=450){
+   const batch=db.batch();
+   refs.slice(i,i+450).forEach(ref=>batch.delete(ref));
+   await batch.commit();
+  }
+  await loadData();
+  alert('All fixtures have been deleted.');
+ }catch(e){
+  console.error(e);
+  alert('Could not delete all fixtures. Check admin permissions and try again.');
+ }
+}
+async function generateFixtures(comp){
+ const teams=teamObjects(comp).map(t=>t.name).filter(Boolean);
+ if(teams.length<2){alert(`At least 2 teams are required for ${comp}.`);return;}
+ const oldFixtures=state.fixtures.filter(f=>compOf(f)===comp);
+ if(oldFixtures.length){
+  const played=oldFixtures.filter(f=>score(f)).length;
+  const warning=played?`\n\nWarning: ${played} fixture(s) already have results. Rebuilding will delete them too.`:'';
+  if(!confirm(`${comp} already has ${oldFixtures.length} fixture(s). Rebuild its complete schedule using the correct round-robin order?${warning}`))return;
+  try{
+   for(let i=0;i<oldFixtures.length;i+=450){
+    const batch=db.batch();
+    oldFixtures.slice(i,i+450).forEach(f=>batch.delete(db.collection('fixtures').doc(f.id)));
+    await batch.commit();
+   }
+  }catch(e){
+   console.error(e);
+   alert('Could not clear the old fixtures. Check admin permissions and try again.');
+   return;
+  }
+ }
+ // Circle-method round robin. Every team plays exactly once per Matchday.
+ // For an even number of teams: N-1 first-leg Matchdays, then N-1 return-leg Matchdays.
+ let arr=teams.slice();
+ if(arr.length%2)arr.push(null);
+ const n=arr.length, rounds=n-1, half=n/2;
+ const firstLeg=[];
+ for(let r=0;r<rounds;r++){
+  const games=[];
+  for(let i=0;i<half;i++){
+   const home=arr[i], away=arr[n-1-i];
+   if(home&&away)games.push([home,away]);
+  }
+  firstLeg.push(games);
+  // Keep the first team fixed and rotate all other teams around it.
+  arr=[arr[0],arr[n-1],...arr.slice(1,n-1)];
+ }
+ const schedule=[];
+ firstLeg.forEach(games=>schedule.push(games));
+ firstLeg.forEach(games=>schedule.push(games.map(([home,away])=>[away,home])));
+ const fixtures=schedule.flatMap((games,r)=>games.map(([home,away])=>({home,away,round:r+1})));
+ for(let i=0;i<fixtures.length;i+=450){
+  const batch=db.batch();
+  fixtures.slice(i,i+450).forEach(({home,away,round})=>{
+   const ref=db.collection('fixtures').doc();
+   batch.set(ref,{competition:comp,homeTeam:home,awayTeam:away,round:`Matchday ${round}`,date:'',seasonId:SEASON_ID,createdAt:firebase.firestore.FieldValue.serverTimestamp()});
+  });
+  await batch.commit();
+ }
+ await loadData();
+ const gamesPerDay=fixtures.length/((teams.length%2?teams.length:teams.length)-1)/2;
+ alert(`${fixtures.length} fixtures generated for ${comp}. ${rounds} first-leg Matchdays + ${rounds} return-leg Matchdays, with ${Math.floor(gamesPerDay)} match(es) per Matchday.`);
+}
+
 function adminResults(c){
  const played=state.fixtures.slice().sort((a,b)=>(dateObj(b.date||b.kickoff)||0)-(dateObj(a.date||a.kickoff)||0));
  c.innerHTML=`<div class="admin-heading"><div><p class="eyebrow">RESULT CONTROL</p><h2>Match Results</h2><p>Enter or update the final score for any fixture. Saving a result updates the league table automatically.</p></div></div><div class="admin-list">${played.map(f=>{const [h,a]=teamsInFixture(f),sc=score(f);return `<article class="admin-item"><div><b>${esc(h)} vs ${esc(a)}</b><span>${esc(compOf(f))} • ${esc(f.round||'Matchday')} • ${esc(dateText(f.date||f.kickoff))}</span></div><div class="admin-result-form"><input type="number" min="0" id="homeScore-${f.id}" value="${sc?sc.h:''}" placeholder="Home"><strong>-</strong><input type="number" min="0" id="awayScore-${f.id}" value="${sc?sc.a:''}" placeholder="Away"><button class="mini-btn" onclick="saveFixtureResult('${f.id}')">Save Result</button>${sc?`<button class="mini-btn danger" onclick="clearFixtureResult('${f.id}')">Clear</button>`:''}</div></article>`}).join('')||'<p class="muted">No fixtures available. Create fixtures first.</p>'}</div>`;
