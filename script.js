@@ -382,6 +382,42 @@ auth.onAuthStateChanged(async u=>{state.admin=!!u&&!u.isAnonymous;await loadData
  $('runResultSearch').onclick=filter;
  $('clearResultSearch').onclick=()=>{ $('resultSearch').value=''; filter(); $('resultSearch').focus(); };
 }
+async function saveFixtureResult(id){
+  if(!state.admin){alert('Admin access required.');return;}
+  const fixture=state.fixtures.find(f=>f.id===id);
+  if(!fixture){alert('Fixture not found.');return;}
+  const hEl=$('homeScore-'+id), aEl=$('awayScore-'+id);
+  const hv=hEl?.value.trim(), av=aEl?.value.trim();
+  if(hv===''||av===''||!/^\d+$/.test(hv)||!/^\d+$/.test(av)){alert('Enter valid whole-number scores for both teams.');return;}
+  const btn=hEl?.parentElement?.querySelector('button');
+  if(btn){btn.disabled=true;btn.textContent='Saving…';}
+  try{
+    await db.collection('fixtures').doc(id).set({homeScore:Number(hv),awayScore:Number(av),resultStatus:'completed',resultUpdatedAt:firebase.firestore.FieldValue.serverTimestamp(),updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+    await loadData();
+    adminTab('results');
+    alert('Result saved successfully.');
+  }catch(e){
+    console.error('saveFixtureResult failed',e);
+    alert('Result could not be saved. Check that you are logged in with the admin account and that the latest Firestore Rules are published.');
+    if(btn){btn.disabled=false;btn.textContent='Save Result';}
+  }
+}
+window.saveFixtureResult=saveFixtureResult;
+
+async function clearFixtureResult(id){
+  if(!state.admin)return;
+  if(!confirm('Clear this result?'))return;
+  try{
+    await db.collection('fixtures').doc(id).update({homeScore:firebase.firestore.FieldValue.delete(),awayScore:firebase.firestore.FieldValue.delete(),resultStatus:firebase.firestore.FieldValue.delete(),resultUpdatedAt:firebase.firestore.FieldValue.delete(),updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
+    await loadData();
+    adminTab('results');
+  }catch(e){
+    console.error('clearFixtureResult failed',e);
+    alert('Result could not be cleared.');
+  }
+}
+window.clearFixtureResult=clearFixtureResult;
+
 function resultFixtureHtml(f){
  const [h,a]=teamsInFixture(f),sc=score(f);
  return `<article class="admin-item"><div><b>${esc(h)} vs ${esc(a)}</b><span>${esc(compOf(f))} • ${esc(f.round||'Matchday')} • ${esc(dateText(f.date||f.kickoff))}</span></div><div class="admin-result-form"><input type="number" min="0" id="homeScore-${f.id}" value="${sc?sc.h:''}" placeholder="Home"><strong>-</strong><input type="number" min="0" id="awayScore-${f.id}" value="${sc?sc.a:''}" placeholder="Away"><button class="mini-btn" onclick="saveFixtureResult('${f.id}')">Save Result</button>${sc?`<button class="mini-btn danger" onclick="clearFixtureResult('${f.id}')">Clear</button>`:''}</div></article>`;
