@@ -28,7 +28,7 @@ const catalog=[
 ['Atalanta','Championship','https://images.fotmob.com/image_resources/logo/teamlogo/8524.png'],['Fiorentina','Championship','https://images.fotmob.com/image_resources/logo/teamlogo/8535.png'],['Bologna','Championship','https://images.fotmob.com/image_resources/logo/teamlogo/9857.png'],['Torino','Championship','https://images.fotmob.com/image_resources/logo/teamlogo/9804.png']
 ].map(([name,competition,logo])=>({name,competition,logo}));
 
-const state={teams:[],players:[],fixtures:[],news:[],hall:[],awards:[],comments:[],awardVotes:[],season:null,admin:false};
+const state={teams:[],players:[],fixtures:[],news:[],hall:[],season:null,admin:false,awards:[],comments:[],awardVotes:[]};
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 const initials=s=>String(s||'?').split(/\s+/).filter(Boolean).slice(0,2).map(x=>x[0]).join('').toUpperCase();
@@ -37,7 +37,7 @@ function dateText(v){const d=dateObj(v);return d?d.toLocaleDateString(undefined,
 function logoUrl(name){const t=state.teams.find(x=>x.name===name)||catalog.find(x=>x.name===name);return t?.logo||'';}
 function logo(name,small=false){const src=logoUrl(name);return src?`<span class="logo-box ${small?'sm':''}"><img class="team-logo ${small?'sm':''}" src="${src}" alt="${esc(name)} logo" loading="lazy" onerror="this.parentElement.classList.add('failed');this.remove()"><span class="logo-fallback ${small?'sm':''}">${esc(initials(name))}</span></span>`:`<span class="logo-box ${small?'sm':''}"><span class="logo-fallback ${small?'sm':''}">${esc(initials(name))}</span></span>`}
 
-function go(page){document.querySelectorAll('.page').forEach(x=>x.classList.toggle('active',x.dataset.pageContent===page));document.querySelectorAll('[data-page]').forEach(x=>x.classList.toggle('active',x.dataset.page===page));$('sidebar')?.classList.remove('open');window.scrollTo({top:0,behavior:'smooth'});if(page==='teams')renderTeams();if(page==='fixtures')renderFixtures();if(page==='standings')renderStandings();if(page==='players')renderPlayers();if(page==='hall')renderHall();if(page==='awards')renderAwards();if(page==='community')renderComments();if(page==='news')renderNews();if(page==='admin')renderAdmin();}
+function go(page){document.querySelectorAll('.page').forEach(x=>x.classList.toggle('active',x.dataset.pageContent===page));document.querySelectorAll('[data-page]').forEach(x=>x.classList.toggle('active',x.dataset.page===page));$('sidebar')?.classList.remove('open');window.scrollTo({top:0,behavior:'smooth'});if(page==='teams')renderTeams();if(page==='fixtures')renderFixtures();if(page==='standings')renderStandings();if(page==='players')renderPlayers();if(page==='hall')renderHall();if(page==='news')renderNews();if(page==='awards')renderAwards();if(page==='community')renderComments();}
 document.addEventListener('click',e=>{const b=e.target.closest('[data-page]');if(b)go(b.dataset.page);});
 $('mobileMenu')?.addEventListener('click',()=>$('sidebar').classList.toggle('open'));
 $('registerCta')?.addEventListener('click',openRegister);$('registerPlayerBtn')?.addEventListener('click',openRegister);$('closeRegister')?.addEventListener('click',closeRegister);$('registerModal')?.addEventListener('click',e=>{if(e.target===$('registerModal'))closeRegister()});
@@ -76,154 +76,145 @@ function populateClubPicker(q=''){
    ? teams.map(t=>`<option value="${esc(t.name)}">${esc(t.name)}</option>`).join('')
    : '<option value="">No available clubs</option>';
 }
-$('registrationForm')?.addEventListener('submit',async e=>{
- e.preventDefault();
- const m=$('registrationMsg'); m.className='form-msg'; m.textContent='Registering…';
- const name=$('name').value.trim(), raw=$('pid').value.trim(), key=raw.toLowerCase().replace(/\s+/g,''), competition=$('competition').value, club=$('club').value;
- if(!name||!key||!club){m.className='form-msg error';m.textContent='Fill all required fields.';return;}
- const playerDocId=`${SEASON_ID}_${key.replace(/[^a-z0-9_-]/g,'_')}`;
- const ref=db.collection('players').doc(playerDocId);
- const lockKey=`${SEASON_ID}__${competition}__${club}`.toLowerCase().replace(/[^a-z0-9_-]/g,'_');
- const lockRef=db.collection('playerTeamLocks').doc(lockKey);
- try{
-   if(state.players.some(p=>p.seasonId===SEASON_ID&&p.competition===competition&&String(p.club||'').trim().toLowerCase()===club.trim().toLowerCase()&&p.status!=='cancelled')){
-     m.className='form-msg error'; m.textContent=`${club} is already registered by another player in ${competition}. Choose another club.`; populateClubPicker(''); return;
-   }
-   if((await ref.get()).exists) throw new Error('PLAYER_EXISTS');
-   if((await lockRef.get()).exists) throw new Error('TEAM_TAKEN');
-   await ref.set({name,playerId:raw,playerIdKey:key,lockId:lockKey,competition,club,seasonId:SEASON_ID,status:'active',createdAt:firebase.firestore.FieldValue.serverTimestamp()});
-   await lockRef.set({playerDocId,playerIdKey:key,competition,club,seasonId:SEASON_ID,status:'active',createdAt:firebase.firestore.FieldValue.serverTimestamp()});
-   m.className='form-msg ok'; m.textContent=`Registration successful — ${club}`;
-   e.target.reset(); populateClubPicker(''); await loadData(); setTimeout(closeRegister,900);
- }catch(err){
-   console.error('registration failed',err); m.className='form-msg error';
-   if(err.message==='PLAYER_EXISTS') m.textContent=`This Player ID is already registered for ${state.season?.name||DEFAULT_SEASON}.`;
-   else if(err.message==='TEAM_TAKEN') m.textContent=`${club} is already registered by another player in ${competition}. Choose another club.`;
-   else m.textContent=`Registration failed: ${err.code||err.message||'Firebase error'}`;
- }
-});
+async function ensureAnon(){if(auth.currentUser)return true;try{await auth.signInAnonymously();return true}catch(e){console.error(e);return false}}
+$('registrationForm')?.addEventListener('submit',async e=>{e.preventDefault();const m=$('registrationMsg');m.className='form-msg';m.textContent='Registering…';if(!(await ensureAnon())){m.className='form-msg error';m.textContent='Firebase Anonymous sign-in is not enabled.';return;}const name=$('name').value.trim(),raw=$('pid').value.trim(),key=raw.toLowerCase().replace(/\s+/g,''),competition=$('competition').value,club=$('club').value;if(!name||!key||!club){m.className='form-msg error';m.textContent='Fill all required fields.';return;}const playerDocId=`${SEASON_ID}_${key.replace(/[^a-z0-9_-]/g,'_')}`;
+const ref=db.collection('players').doc(playerDocId);
+const lockKey=`${SEASON_ID}__${competition}__${club}`.toLowerCase().replace(/[^a-z0-9_-]/g,'_');
+const lockRef=db.collection('playerTeamLocks').doc(lockKey);
+try{
+  if(state.players.some(p=>p.seasonId===SEASON_ID&&p.competition===competition&&String(p.club||'').trim().toLowerCase()===club.trim().toLowerCase()&&p.status!=='cancelled')){
+    m.className='form-msg error';
+    m.textContent=`${club} is already registered by another player in ${competition}. Choose another club.`;
+    populateClubPicker('');
+    return;
+  }
+  await db.runTransaction(async tx=>{
+    const snap=await tx.get(ref);
+    if(snap.exists) throw new Error('PLAYER_EXISTS');
+    const lockSnap=await tx.get(lockRef);
+    if(lockSnap.exists) throw new Error('TEAM_TAKEN');
 
-async function getAll(c){
- try{const snap=await db.collection(c).get();return snap.docs.map(d=>({id:d.id,...d.data()}));}
- catch(e){console.error(`Firestore read failed: ${c}`,e);state.firebaseErrors=state.firebaseErrors||{};state.firebaseErrors[c]=e;return[];}
+    tx.set(ref,{name,playerId:raw,playerIdKey:key,uid:auth.currentUser.uid,lockId:lockKey,competition,club,seasonId:SEASON_ID,status:'active',createdAt:firebase.firestore.FieldValue.serverTimestamp()});
+    tx.set(lockRef,{playerDocId,playerIdKey:key,uid:auth.currentUser.uid,competition,club,seasonId:SEASON_ID,status:'active',createdAt:firebase.firestore.FieldValue.serverTimestamp()});
+  });
+  m.className='form-msg ok';
+  m.textContent=`Registration successful — ${club}`;
+  e.target.reset();
+  populateClubPicker('');
+  await loadData();
+  setTimeout(closeRegister,900);
+}catch(err){
+  console.error(err);
+  m.className='form-msg error';
+  if(err.message==='PLAYER_EXISTS') m.textContent=`This Player ID is already registered for ${state.season?.name||DEFAULT_SEASON}.`;
+  else if(err.message==='TEAM_TAKEN') m.textContent=`${club} is already registered by another player in ${competition}. Choose another club.`;
+  else m.textContent='Registration failed. Please try again.';
+}});
+
+async function getAll(c){try{const s=await db.collection(c).get();return s.docs.map(d=>({id:d.id,...d.data()}));}catch(e){console.warn(c,e);return[];}}
+async function loadData(){const [teams,players,fixtures,news,hall,seasons,awards,comments,awardVotes]=await Promise.all(['teams','players','fixtures','news','hallOfFame','seasons','awards','comments','awardVotes'].map(getAll));state.teams=teams;state.players=players.filter(p=>p.seasonId===SEASON_ID||!p.seasonId);state.fixtures=fixtures;state.news=news;state.hall=hall;state.awards=awards.filter(a=>!a.seasonId||a.seasonId===SEASON_ID);state.comments=comments.filter(c=>!c.seasonId||c.seasonId===SEASON_ID);state.awardVotes=awardVotes.filter(v=>!v.seasonId||v.seasonId===SEASON_ID);state.season=seasons.find(s=>s.id===SEASON_ID)||seasons.find(s=>s.current===true)||{id:SEASON_ID,name:DEFAULT_SEASON,status:'Ongoing'};renderAll();renderAwards();renderComments();if(state.admin)renderAdmin();}
+function score(f){const h=f.homeScore??f.homeGoals,a=f.awayScore??f.awayGoals;return h!==undefined&&h!==null&&a!==undefined&&a!==null&&h!==''&&a!==''?{h:+h,a:+a}:null;}
+function teamsInFixture(f){return [f.homeTeam||f.home||f.teamA||'',f.awayTeam||f.away||f.teamB||''];}
+function compOf(f){return f.competition||'Premier League';}
+function table(comp){const map=new Map(teamObjects(comp).map(t=>[t.name,{team:t.name,mp:0,w:0,d:0,l:0,gf:0,ga:0,gd:0,pts:0}]));state.fixtures.filter(f=>compOf(f)===comp&&score(f)&&map.has((f.homeTeam||f.home))&&map.has((f.awayTeam||f.away))).forEach(f=>{const s=score(f),[h,a]=teamsInFixture(f);if(!map.has(h))map.set(h,{team:h,mp:0,w:0,d:0,l:0,gf:0,ga:0,gd:0,pts:0});if(!map.has(a))map.set(a,{team:a,mp:0,w:0,d:0,l:0,gf:0,ga:0,gd:0,pts:0});const H=map.get(h),A=map.get(a);H.mp++;A.mp++;H.gf+=s.h;H.ga+=s.a;A.gf+=s.a;A.ga+=s.h;if(s.h>s.a){H.w++;H.pts+=3;A.l++;}else if(s.a>s.h){A.w++;A.pts+=3;H.l++;}else{H.d++;A.d++;H.pts++;A.pts++;}});return [...map.values()].map(x=>({...x,gd:x.gf-x.ga})).sort((a,b)=>b.pts-a.pts||b.gd-a.gd||b.gf-a.gf||a.team.localeCompare(b.team));}
+function rowHtml(r,i){return `<tr><td><b>${i+1}</b></td><td><div class="team-cell">${logo(r.team,true)}<b>${esc(r.team)}</b></div></td><td>${r.mp}</td><td>${r.w}</td><td>${r.d}</td><td>${r.l}</td><td>${r.gf}</td><td>${r.ga}</td><td>${r.gd}</td><td><b>${r.pts}</b></td></tr>`;}
+function renderStandings(){const c=$('standingsCompetition')?.value||'Premier League';const rows=table(c);$('standingsTable').innerHTML=rows.length?rows.map(rowHtml).join(''):`<tr><td colspan="10" class="empty">No results published yet.</td></tr>`;}
+function fixtureHtml(f,admin=false){const [h,a]=teamsInFixture(f),s=score(f);return `<article class="fixture-card"><div class="fixture-meta"><span class="competition-pill">${esc(compOf(f))}</span><span>${dateText(f.date||f.kickoff)}</span><span>${esc(f.round||'Match')}</span></div><div class="fixture-teams"><div class="fixture-team">${logo(h)}<strong>${esc(h)}</strong></div><div class="fixture-score"><b>${s?`${s.h} - ${s.a}`:'VS'}</b><small>${s?'FULL TIME':'UPCOMING'}</small></div><div class="fixture-team">${logo(a)}<strong>${esc(a)}</strong></div></div>${admin?`<div class="fixture-admin-actions"><button class="mini-btn" onclick="editFixture('${f.id}')">Edit</button><button class="mini-btn danger" onclick="deleteFixture('${f.id}')">Delete</button></div>`:''}</article>`;}
+function renderFixtures(){
+ let fs=state.fixtures.filter(f=>{const c=compOf(f);const [h,a]=teamsInFixture(f);return !!teamObjects(c).find(t=>t.name===h)&&!!teamObjects(c).find(t=>t.name===a);});
+ const c=$('fixtureCompetition')?.value||'all',st=$('fixtureStatus')?.value||'all';
+ if(c!=='all')fs=fs.filter(f=>compOf(f)===c);
+ if(st==='upcoming')fs=fs.filter(f=>!score(f));
+ if(st==='played')fs=fs.filter(f=>!!score(f));
+ fs.sort((a,b)=>{
+   const ra=parseInt(String(a.round||'').match(/\d+/)?.[0]||'9999',10);
+   const rb=parseInt(String(b.round||'').match(/\d+/)?.[0]||'9999',10);
+   return ra-rb || (dateObj(a.date||a.kickoff)||0)-(dateObj(b.date||b.kickoff)||0);
+ });
+ const competitions=new Map();
+ fs.forEach(f=>{
+   const comp=compOf(f), round=f.round||'Matchday';
+   if(!competitions.has(comp))competitions.set(comp,new Map());
+   const days=competitions.get(comp);
+   if(!days.has(round))days.set(round,[]);
+   days.get(round).push(f);
+ });
+ const compOrder=[...MAJOR_LEAGUES,'Championship','UCL'];
+ const ordered=[...competitions.entries()].sort((a,b)=>{
+   const ia=compOrder.indexOf(a[0]), ib=compOrder.indexOf(b[0]);
+   return (ia<0?999:ia)-(ib<0?999:ib);
+ });
+ $('fixturesList').innerHTML=ordered.length?ordered.map(([comp,days])=>{
+   const orderedDays=[...days.entries()].sort((a,b)=>{
+     const ra=parseInt(String(a[0]).match(/\d+/)?.[0]||'9999',10);
+     const rb=parseInt(String(b[0]).match(/\d+/)?.[0]||'9999',10);
+     return ra-rb;
+   });
+   return `<section class="competition-fixtures-block"><div class="competition-fixtures-heading"><span>COMPETITION</span><h2>${esc(comp)}</h2></div>${orderedDays.map(([round,games])=>`<div class="matchday-block"><div class="matchday-title"><h3>${esc(round)}</h3><span>${games.length} match${games.length===1?'':'es'}</span></div><div class="matchday-row" style="--match-count:${games.length}">${games.map(f=>fixtureHtml(f)).join('')}</div></div>`).join('')}</section>`;
+ }).join(''):`<div class="empty-block">No fixtures found.</div>`;
 }
-async function loadData(){
- state.firebaseErrors={};
- const [teams,players,fixtures,news,hall,seasons,awards,comments,awardVotes]=await Promise.all(['teams','players','fixtures','news','hallOfFame','seasons','awards','comments','awardVotes'].map(getAll));
- state.teams=teams;state.players=players.filter(p=>p.seasonId===SEASON_ID||!p.seasonId);state.fixtures=fixtures;state.news=news;state.hall=hall;
- state.awards=awards.filter(a=>!a.seasonId||a.seasonId===SEASON_ID);state.comments=comments.filter(c=>!c.seasonId||c.seasonId===SEASON_ID);state.awardVotes=awardVotes.filter(v=>!v.seasonId||v.seasonId===SEASON_ID);
- state.season=seasons.find(s=>s.id===SEASON_ID)||seasons.find(s=>s.current===true)||{id:SEASON_ID,name:DEFAULT_SEASON,status:'Ongoing',year:'2026',activeCompetitions:ALL_COMPETITIONS};
- renderAll();renderAwards();renderComments();if(state.admin)renderAdmin();updateFirebaseStatus();
+function renderTeams(){const q=($('teamSearch')?.value||'').toLowerCase(),c=$('teamCompetition')?.value||'all';let ts=teamObjects().filter(t=>!q||t.name.toLowerCase().includes(q));if(c!=='all')ts=ts.filter(t=>teamCompetitions(t).includes(c));$('teamsGrid').innerHTML=ts.map(t=>`<article class="team-card"><div class="team-logo-wrap">${logo(t.name)}</div><div><h3>${esc(t.name)}</h3><p>${esc(t.competition||'Competition TBA')}</p></div><span class="status-dot ${t.enabled===false?'off':''}">${t.enabled===false?'Disabled':'Available'}</span></article>`).join('')||`<div class="empty-block">No teams found.</div>`;}
+function renderPlayers(){const ps=state.players.slice().sort((a,b)=>String(a.name).localeCompare(String(b.name)));$('playersGrid').innerHTML=ps.length?ps.map(p=>`<article class="player-card"><div class="player-avatar">${esc(initials(p.name))}</div><div><h3>${esc(p.name)}</h3><p>${esc(p.club||'Club TBA')}</p><small>${esc(p.competition||'')} • ${esc(state.season?.name||DEFAULT_SEASON)}</small></div></article>`).join(''):`<div class="empty-block">No player registrations yet.</div>`;}
+function renderHall(){const hs=state.hall.slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));$('hallGrid').innerHTML=hs.length?hs.map(h=>`<article class="hall-card"><div class="trophy">🏆</div><span>${esc(h.season||h.seasonName||DEFAULT_SEASON)}</span><h2>${esc(h.winner||h.team||'Champion')}</h2><p>${esc(h.competition||'Competition')} ${h.date?'• '+esc(h.date):''}</p></article>`).join(''):`<div class="empty-block">No champions published yet.</div>`;}
+function renderNews(){
+ const ns=state.news.slice().sort((a,b)=>String(b.date||b.createdAt||'').localeCompare(String(a.date||a.createdAt||'')));
+ if(!ns.length){$('newsGrid').innerHTML='<div class="news-empty"><div class="news-empty-icon">✦</div><h3>No news published yet</h3><p>The latest league announcements will appear here.</p></div>';return;}
+ const featured=ns[0], rest=ns.slice(1);
+ const fmtDate=n=>{const d=n.date?new Date(n.date+'T00:00:00'):null;return d&&!isNaN(d)?d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}):(n.date||dateText(n.createdAt)||'LATEST');};
+ const category=n=>n.category||n.competition||'League Update';
+ const excerpt=(n,max=190)=>{const x=String(n.body||n.content||'');return x.length>max?x.slice(0,max).trim()+'…':x;};
+ const card=n=>`<article class="news-modern-card"><div class="news-card-top"><span class="news-category">${esc(category(n))}</span><span class="news-date">${esc(fmtDate(n))}</span></div><div class="news-card-icon">⚽</div><h3>${esc(n.title||'League Update')}</h3><p>${esc(excerpt(n))}</p><div class="news-card-foot"><span>Gosper Global eFootball League</span><b>→</b></div></article>`;
+ $('newsGrid').innerHTML=`<div class="news-ticker"><span class="ticker-label">LATEST</span><div class="ticker-text">${esc(featured.title||'League Update')}</div><span class="ticker-date">${esc(fmtDate(featured))}</span></div><article class="news-featured"><div class="news-featured-glow"></div><div class="news-featured-content"><div class="news-featured-meta"><span class="news-category bright">${esc(category(featured))}</span><span>${esc(fmtDate(featured))}</span></div><h2>${esc(featured.title||'League Update')}</h2><p>${esc(excerpt(featured,320))}</p><div class="news-featured-foot"><span>OFFICIAL LEAGUE ANNOUNCEMENT</span><span class="news-arrow">↗</span></div></div><div class="news-featured-mark">GG</div></article><div class="news-feed-head"><div><p class="eyebrow">LATEST STORIES</p><h2>From the League</h2></div><span>${ns.length} ${ns.length===1?'update':'updates'}</span></div><div class="news-feed">${rest.length?rest.map(card).join(''): '<div class="news-single-note">That’s the latest update. New announcements will appear here.</div>'}</div>`;
 }
-function updateFirebaseStatus(){
- let el=document.getElementById('firebaseStatus');
- if(!el){el=document.createElement('div');el.id='firebaseStatus';el.className='firebase-status';document.body.appendChild(el);}
- const errors=Object.keys(state.firebaseErrors||{});
- if(errors.length){el.className='firebase-status error';el.textContent=`Firebase: read error (${errors.length})`;el.title='Collections failing: '+errors.join(', ');}
- else{el.className='firebase-status ok';el.textContent='Firebase: connected';el.title='Firestore reads are working.';}
+function renderDashboard(){
+ const pl=table('Premier League');
+ $('dashTable').innerHTML=pl.slice(0,6).map(rowHtml).join('')||`<tr><td colspan="10" class="empty">No standings yet.</td></tr>`;
+ const up=state.fixtures.filter(f=>!score(f));
+ const grouped=new Map();
+ up.forEach(f=>{const comp=compOf(f),round=f.round||'Matchday';if(!grouped.has(comp))grouped.set(comp,new Map());const days=grouped.get(comp);if(!days.has(round))days.set(round,[]);days.get(round).push(f);});
+ const compOrder=[...MAJOR_LEAGUES,'Championship','UCL'];
+ const ordered=[...grouped.entries()].sort((a,b)=>(compOrder.indexOf(a[0])<0?999:compOrder.indexOf(a[0]))-(compOrder.indexOf(b[0])<0?999:compOrder.indexOf(b[0])));
+ $('dashMatches').innerHTML=ordered.length?ordered.map(([comp,days])=>{
+   const rounds=[...days.entries()].sort((a,b)=>(parseInt(String(a[0]).match(/\d+/)?.[0]||9999,10)-parseInt(String(b[0]).match(/\d+/)?.[0]||9999,10)));
+   return `<section class="dashboard-fixture-competition"><div class="dashboard-fixture-heading"><span>COMPETITION</span><h3>${esc(comp)}</h3></div>${rounds.map(([round,games])=>`<div class="dashboard-fixture-matchday"><div class="dashboard-matchday-title"><b>${esc(round)}</b><span>${games.length} match${games.length===1?'':'es'}</span></div><div class="dashboard-fixture-games">${games.map(fixtureHtml).join('')}</div></div>`).join('')}</section>`;
+ }).join(''):`<div class="empty-block">No fixtures published yet.</div>`;
+ $('dashPlayers').textContent=state.players.length;$('dashFixtures').textContent=state.fixtures.length;$('dashPlayed').textContent=state.fixtures.filter(f=>score(f)).length;$('dashTeams').textContent=teamObjects().length;
 }
 
-function awardArt(category, cls=''){
- const c=String(category||'').toLowerCase();
- let kind='star'; if(c.includes('ballon'))kind='ballon'; else if(c.includes('top scorer'))kind='boot'; else if(c.includes('defender'))kind='defender'; else if(c.includes('player of the tournament'))kind='player';
- const common=`class="inline-award-svg ${cls}" viewBox="0 0 180 220" role="img" aria-label="${esc(category||'Award')}"`;
- if(kind==='ballon') return `<div class="ballon-real-art"><img src="https://upload.wikimedia.org/wikipedia/commons/3/3d/Ballon_d%27Or.png" alt="Ballon d'Or trophy" loading="eager" referrerpolicy="no-referrer"></div>`; if(kind==='boot') return `<svg ${common}><defs><linearGradient id="goldBoot" x1="0" x2="1"><stop stop-color="#fff0a2"/><stop offset=".5" stop-color="#d6a52a"/><stop offset="1" stop-color="#76500d"/></linearGradient></defs><circle cx="90" cy="105" r="76" fill="#d6a52a" opacity=".08"/><path d="M53 37 C67 44 80 48 96 49 L103 87 C108 99 126 103 139 114 L145 131 L42 131 L35 121 L44 111 L57 107 L62 88 L48 58Z" fill="url(#goldBoot)" stroke="#ffe999" stroke-width="2"/><path d="M56 53 L95 61 M51 67 L98 75 M47 82 L101 89" stroke="#fff1a7" stroke-width="4" opacity=".6"/><path d="M42 131 H145" stroke="#fff0a0" stroke-width="6"/></svg>`;
- if(kind==='defender') return `<svg ${common}><defs><linearGradient id="shield" x1="0" x2="1"><stop stop-color="#e7f4d2"/><stop offset=".5" stop-color="#8bb34f"/><stop offset="1" stop-color="#38541f"/></linearGradient></defs><path d="M90 18 L150 39 V92 C150 137 121 169 90 187 C59 169 30 137 30 92 V39Z" fill="url(#shield)" stroke="#eaffbf" stroke-width="3"/><path d="M90 48 L100 72 L126 75 L106 92 L112 117 L90 103 L68 117 L74 92 L54 75 L80 72Z" fill="#17240e" opacity=".9"/></svg>`;
- if(kind==='player') return `<svg ${common}><defs><linearGradient id="pl" x1="0" x2="1"><stop stop-color="#fff3b0"/><stop offset=".55" stop-color="#c99a22"/><stop offset="1" stop-color="#68470b"/></linearGradient></defs><circle cx="90" cy="72" r="35" fill="url(#pl)"/><path d="M37 166 Q45 113 90 113 Q135 113 143 166Z" fill="url(#pl)"/><circle cx="90" cy="72" r="17" fill="#fff0a0" opacity=".45"/><path d="M55 167 H125" stroke="#fff1a3" stroke-width="8" stroke-linecap="round"/></svg>`;
- return `<svg ${common}><defs><linearGradient id="st" x1="0" x2="1"><stop stop-color="#fff1a3"/><stop offset=".5" stop-color="#d2a32a"/><stop offset="1" stop-color="#6b4b0e"/></linearGradient></defs><path d="M90 22 L103 64 L148 64 L112 90 L126 132 L90 106 L54 132 L68 90 L32 64 L77 64Z" fill="url(#st)" stroke="#fff0a1" stroke-width="3"/></svg>`;
-}
-function awardImage(category){return awardArt(category);}
-function awardIdFor(category,competition='GLOBAL'){
- return `${SEASON_ID}__${String(competition||'GLOBAL').toLowerCase().replace(/[^a-z0-9]+/g,'-')}__${String(category).toLowerCase().replace(/[^a-z0-9]+/g,'-')}`;
-}
-function awardVotesFor(id){return state.awardVotes.filter(v=>v.awardId===id);}
-function voteCounts(award){
- const counts={}; (award.nominees||[]).forEach(n=>counts[n]=0);
- awardVotesFor(award.id).forEach(v=>{if(counts[v.nominee]!==undefined)counts[v.nominee]++;});
- return counts;
-}
+// ---------------- AWARDS + COMMUNITY (additive; existing league logic remains untouched) ----------------
+const AWARD_COMPETITIONS=['Premier League','LaLiga','Serie A','Bundesliga','Championship','UCL'];
+const GLOBAL_AWARDS=["Ballon d'Or","European Top Scorer","European Best Defender"];
+function awardKey(category,competition='GLOBAL'){return `${SEASON_ID}__${competition}__${category}`.replace(/[^a-zA-Z0-9_-]/g,'_');}
+function awardBy(category,competition='GLOBAL'){const id=awardKey(category,competition);return state.awards.find(a=>a.id===id)||state.awards.find(a=>a.category===category&&a.competition===competition);}
+function safeText(v){return esc(v||'');}
+function realisticBallonSvg(){return `<svg class="ballon-real" viewBox="0 0 260 300" aria-label="Ballon d'Or trophy"><defs><radialGradient id="br1"><stop stop-color="#fff7c4"/><stop offset=".35" stop-color="#e8c24b"/><stop offset=".72" stop-color="#9c6d13"/><stop offset="1" stop-color="#4b3108"/></radialGradient><linearGradient id="br2" x1="0" x2="1"><stop stop-color="#fff8cf"/><stop offset=".45" stop-color="#d7a72e"/><stop offset="1" stop-color="#76500b"/></linearGradient><filter id="brShadow"><feDropShadow dx="0" dy="7" stdDeviation="5" flood-opacity=".45"/></filter></defs><ellipse cx="130" cy="268" rx="72" ry="13" fill="#000" opacity=".35"/><path d="M103 211 L157 211 L170 254 L90 254 Z" fill="url(#br2)" stroke="#ffe995" stroke-width="3" filter="url(#brShadow)"/><path d="M76 247 Q130 229 184 247 L177 264 Q130 278 83 264Z" fill="#b7831d" stroke="#ffeaa0" stroke-width="3"/><g filter="url(#brShadow)"><circle cx="130" cy="112" r="78" fill="url(#br1)" stroke="#fff0a2" stroke-width="4"/><path d="M62 112 Q130 42 198 112 Q130 92 62 112Z" fill="#fff4b2" opacity=".2"/><path d="M69 143 Q130 186 191 143" fill="none" stroke="#80570c" stroke-width="5" opacity=".55"/><path d="M80 78 Q130 130 180 78 M66 99 Q130 153 194 99 M76 131 Q130 165 184 131" fill="none" stroke="#6e4b0b" stroke-width="3" opacity=".45"/><circle cx="106" cy="82" r="13" fill="#fff9d8" opacity=".55"/></g><path d="M116 186 L144 186 L150 215 L110 215Z" fill="url(#br2)"/><circle cx="130" cy="221" r="7" fill="#fff0a2"/></svg>`;}
+function awardArt(category){const c=String(category).toLowerCase();if(c.includes('ballon'))return realisticBallonSvg();if(c.includes('top scorer'))return `<svg class="award-svg" viewBox="0 0 160 180"><path d="M45 42h70v70H45z" fill="#d6a52a"/><path d="M58 112h44l8 27H50z" fill="#9b7117"/><path d="M35 42h-18c0 28 15 43 28 43M125 42h18c0 28-15 43-28 43" fill="none" stroke="#e6bd4a" stroke-width="9"/><path d="M55 42l50 70" stroke="#fff3af" stroke-width="7" opacity=".55"/><rect x="38" y="139" width="84" height="12" rx="6" fill="#6d4b0a"/></svg>`;if(c.includes('defender'))return `<svg class="award-svg" viewBox="0 0 160 180"><path d="M80 15l58 22v53c0 38-26 61-58 77-32-16-58-39-58-77V37z" fill="#6f9b3b" stroke="#dff3a6" stroke-width="5"/><path d="M80 46l9 22 24 2-18 15 6 24-21-13-21 13 6-24-18-15 24-2z" fill="#17230d"/></svg>`;if(c.includes('player of the tournament'))return `<svg class="award-svg" viewBox="0 0 160 180"><circle cx="80" cy="52" r="27" fill="#d9aa2f"/><path d="M38 145q7-55 42-55t42 55z" fill="#b78118"/><circle cx="80" cy="52" r="12" fill="#fff2a7" opacity=".6"/><path d="M47 150h66" stroke="#fff1a4" stroke-width="8"/></svg>`;return `<svg class="award-svg" viewBox="0 0 160 180"><path d="M80 12l15 48h51l-41 30 16 49-41-30-41 30 16-49-41-30h51z" fill="#d3a22a" stroke="#fff1a3" stroke-width="4"/></svg>`;}
 function renderAwards(){
- const awards=state.awards.filter(a=>!a.seasonId||a.seasonId===SEASON_ID);
- $('awardsSeason').textContent=state.season?.name||DEFAULT_SEASON; if($('ballonArt')) $('ballonArt').innerHTML=awardArt("Ballon d'Or",'hero-art');
- const ballon=awards.find(a=>String(a.category).toLowerCase()==="ballon d'or" || String(a.category).toLowerCase()==="ballon dor");
- $('ballonWinner').innerHTML=ballon?.winner
-   ? `<span>WINNER • ${esc(ballon.season||state.season?.name||DEFAULT_SEASON)}</span><strong>${esc(ballon.winner)}</strong>`
-   : `<span>WINNER</span><strong>Winner not announced yet</strong>`;
- const top8=(ballon?.top8||[]).filter(Boolean).slice(0,8);
- $('ballonTop8').innerHTML=top8.length
-   ? `<div class="top8-title"><span>FINAL BALLOT</span><h3>Ballon d'Or Top 8</h3></div><div class="top8-grid">${top8.map((n,i)=>`<div class="top8-card"><b>${i+1}</b><span>${esc(n)}</span></div>`).join('')}</div>`
-   : `<div class="top8-empty">The Ballon d'Or Top 8 will appear here when the administrator publishes the final list.</div>`;
- const global=awards.filter(a=>['ballon d\'or','ballon dor','european top scorer','european best defender'].includes(String(a.category).toLowerCase()));
- $('globalAwardsGrid').innerHTML=global.length ? global.map(a=>awardCard(a,true)).join('') : '<div class="empty-block">Global award results will appear here.</div>';
- const comps=[...MAJOR_LEAGUES,'Championship','UCL'];
- $('competitionAwards').innerHTML=comps.map(comp=>{
-   const aa=awards.filter(a=>String(a.competition||'')===comp && ['Player of the Tournament','Top Scorer','Best Defender'].includes(a.category));
-   return `<section class="competition-award-block"><div class="competition-award-heading"><div><span class="award-kicker">${comp==='UCL'?'EUROPEAN NIGHT':'COMPETITION HONOURS'}</span><h3>${esc(comp)}</h3></div><span>3 AWARDS</span></div><div class="awards-grid">${['Player of the Tournament','Top Scorer','Best Defender'].map(cat=>{const a=aa.find(x=>x.category===cat);return a?awardCard(a,false):emptyAwardCard(cat,comp);}).join('')}</div></section>`;
- }).join('');
+ const ballon=awardBy("Ballon d'Or");
+ if($('awardsSeason'))$('awardsSeason').textContent=state.season?.name||DEFAULT_SEASON;
+ if($('ballonArt'))$('ballonArt').innerHTML=awardArt("Ballon d'Or");
+ if($('ballonWinner'))$('ballonWinner').innerHTML=ballon?.winner?`<span>WINNER • ${safeText(ballon.season||state.season?.name)}</span><strong>${safeText(ballon.winner)}</strong>`:`<span>WINNER</span><strong>Not announced yet</strong>`;
+ if($('ballonTop8'))$('ballonTop8').innerHTML=(ballon?.top8||[]).map((n,i)=>`<div class="top8-row"><b>${i+1}</b><span>${safeText(n)}</span></div>`).join('')||'<p class="muted">Top 8 will be announced by admin.</p>';
+ if($('leagueAwardsGrid'))$('leagueAwardsGrid').innerHTML=AWARD_COMPETITIONS.map(comp=>`<section class="award-competition"><div class="award-comp-head"><div><p class="eyebrow">${safeText(comp)}</p><h2>Competition Awards</h2></div></div><div class="award-cards">${['Player of the Tournament','Top Scorer','Best Defender'].map(cat=>{const a=awardBy(cat,comp);const votes=a?(a.nominees||[]).map(n=>({n,count:state.awardVotes.filter(v=>v.awardId===a.id&&v.nominee===n).length})):[];return `<article class="award-card"><div class="award-card-art">${awardArt(cat)}</div><div class="award-card-body"><p class="eyebrow">${safeText(cat)}</p><h3>${safeText(a?.winner||'To be announced')}</h3>${cat==='Player of the Tournament'&&a?.nominees?.length?`<div class="nominees">${votes.map(v=>`<button class="vote-btn" data-award="${safeText(a.id)}" data-nominee="${safeText(v.n)}">Vote <b>${safeText(v.n)}</b><span>${v.count}</span></button>`).join('')}</div>`:'<span class="award-status">Official award</span>'}</div></article>`}).join('')}</div></section>`).join('');
+ if($('globalAwardsGrid'))$('globalAwardsGrid').innerHTML=GLOBAL_AWARDS.filter(x=>x!=="Ballon d'Or").map(cat=>{const a=awardBy(cat);return `<article class="global-award-card"><div class="global-award-art">${awardArt(cat)}</div><div><p class="eyebrow">GLOBAL AWARD</p><h3>${safeText(cat)}</h3><strong>${safeText(a?.winner||'To be announced')}</strong></div></article>`}).join('');
+ document.querySelectorAll('.vote-btn').forEach(btn=>btn.onclick=async()=>{const ok=await ensureAnon();if(!ok)return alert('Voting is temporarily unavailable.');const id=btn.dataset.award, nominee=btn.dataset.nominee;const key='gosper_vote_'+id;if(localStorage.getItem(key))return alert('You have already voted for this award on this device.');try{await db.collection('awardVotes').add({awardId:id,nominee,seasonId:SEASON_ID,createdAt:firebase.firestore.FieldValue.serverTimestamp()});localStorage.setItem(key,'1');await loadData();alert('Vote submitted.');}catch(e){console.error(e);alert('Vote failed.');}});
 }
-function emptyAwardCard(category,competition){
- return `<article class="award-card award-empty-card"><div class="award-art">${awardArt(category)}<span>${esc(competition)}</span></div><div class="award-card-copy"><span class="award-kicker">${esc(competition)}</span><h3>${esc(category)}</h3><p>Administrator has not published this award yet.</p></div></article>`;
-}
-function awardCard(a,global=false){
- const counts=voteCounts(a), nominees=(a.nominees||[]).filter(Boolean);
- const isVote=a.category==='Player of the Tournament' && nominees.length;
- return `<article class="award-card ${global?'global-award-card':''}">
-   <div class="award-art">${awardArt(a.category)}<span>${esc(a.competition||'GLOBAL')}</span></div>
-   <div class="award-card-copy"><span class="award-kicker">${esc(a.season||state.season?.name||DEFAULT_SEASON)}</span><h3>${esc(a.category)}</h3>
-   ${a.winner?`<div class="award-winner-line"><small>WINNER</small><strong>${esc(a.winner)}</strong></div>`:'<p>Winner not announced yet.</p>'}
-   ${isVote?`<div class="vote-title">VOTE FOR PLAYER OF THE TOURNAMENT</div><div class="nominee-list">${nominees.map(n=>`<button class="nominee-btn" onclick="castAwardVote('${a.id}',${JSON.stringify(n)})"><span>${esc(n)}</span><b>${counts[n]||0}</b></button>`).join('')}</div><small class="vote-note">One vote per award on this device/session.</small>`:''}
-   </div></article>`;
-}
-async function castAwardVote(awardId,nominee){
- try{
-   let visitorId=localStorage.getItem('gosperVisitorId');
-   if(!visitorId){visitorId=(crypto.randomUUID?crypto.randomUUID():Math.random().toString(36).slice(2)+Date.now());localStorage.setItem('gosperVisitorId',visitorId);}
-   const key=`gosper_voted_${awardId}`;
-   if(localStorage.getItem(key)){alert('You have already voted in this award on this device.');return;}
-   const ref=db.collection('awardVotes').doc(`${awardId}__${visitorId}`);
-   await ref.set({awardId,nominee,visitorId,seasonId:SEASON_ID,createdAt:firebase.firestore.FieldValue.serverTimestamp()});
-   localStorage.setItem(key,'1'); await loadData(); alert(`Vote recorded for ${nominee}.`);
- }catch(e){console.error(e);alert('Vote could not be recorded. Please try again.');}
-}
-window.castAwardVote=castAwardVote;
+function renderComments(){const box=$('commentsList');if(!box)return;const arr=state.comments.slice().sort((a,b)=>{const da=dateObj(a.createdAt),db=dateObj(b.createdAt);return (db?.getTime()||0)-(da?.getTime()||0);});box.innerHTML=arr.length?arr.map(c=>`<article class="comment"><div class="comment-avatar">${safeText(initials(c.name))}</div><div><b>${safeText(c.name)}</b><small>${dateText(c.createdAt)}</small><p>${safeText(c.text)}</p></div></article>`).join(''):'<div class="empty-block">No comments yet. Start the conversation.</div>';}
+async function postComment(e){e.preventDefault();const name=$('commentName').value.trim(),text=$('commentText').value.trim(),msg=$('commentMsg');if(!name||!text)return;msg.textContent='Posting…';try{if(!(await ensureAnon()))throw new Error('auth');await db.collection('comments').add({name:name.slice(0,40),text:text.slice(0,500),seasonId:SEASON_ID,createdAt:firebase.firestore.FieldValue.serverTimestamp()});$('commentText').value='';msg.textContent='Posted';await loadData();}catch(err){console.error(err);msg.textContent='Could not post. Please try again.';}}
+function adminAwards(c){const comps=AWARD_COMPETITIONS;const rows=[...comps.map(comp=>['Player of the Tournament',comp]),...comps.map(comp=>['Top Scorer',comp]),...comps.map(comp=>['Best Defender',comp]),...GLOBAL_AWARDS.map(cat=>[cat,'GLOBAL'])];c.innerHTML=`<div class="admin-heading"><div><p class="eyebrow">AWARDS CONTROL</p><h2>Awards Management</h2><p>Create/update nominees, winners and the Ballon d'Or Top 8.</p></div></div><div class="admin-award-form"><select id="awardCategory">${rows.map((r,i)=>`<option value="${i}">${safeText(r[0])} — ${safeText(r[1])}</option>`).join('')}</select><input id="awardWinner" placeholder="Winner"><input id="awardNominees" placeholder="Player of Tournament nominees — separate with commas"><textarea id="awardTop8" placeholder="Ballon d'Or Top 8 — one name per line"></textarea><button class="primary" id="saveAward">Save Award</button></div><div class="admin-list">${state.awards.map(a=>`<article class="admin-item"><div><b>${safeText(a.category)}</b><span>${safeText(a.competition||'GLOBAL')}</span><p>Winner: ${safeText(a.winner||'Not announced')}</p></div></article>`).join('')||'<p class="muted">No awards configured yet.</p>'}</div>`;const cat=$('awardCategory'),fill=()=>{const [category,comp]=rows[Number(cat.value)],a=awardBy(category,comp);$('awardWinner').value=a?.winner||'';$('awardNominees').value=(a?.nominees||[]).join(', ');$('awardTop8').value=(a?.top8||[]).join('\n');};cat.onchange=fill;fill();$('saveAward').onclick=async()=>{const [category,comp]=rows[Number(cat.value)],id=awardKey(category,comp);await adminSave('awards',id,{category,competition:comp,winner:$('awardWinner').value.trim(),nominees:$('awardNominees').value.split(',').map(x=>x.trim()).filter(Boolean),top8:$('awardTop8').value.split(/\n|,/).map(x=>x.trim()).filter(Boolean),season:state.season?.name||DEFAULT_SEASON,seasonId:SEASON_ID});alert('Award saved.');adminTab('awards');};}
+function adminCommunity(c){c.innerHTML=`<div class="admin-heading"><div><p class="eyebrow">COMMUNITY CONTROL</p><h2>Comments</h2><p>Moderate public comments.</p></div></div><div class="admin-list">${state.comments.map(x=>`<article class="admin-item"><div><b>${safeText(x.name)}</b><span>${dateText(x.createdAt)}</span><p>${safeText(x.text)}</p></div><button class="mini-btn danger" data-delete-comment="${safeText(x.id)}">Delete</button></article>`).join('')||'<p class="muted">No comments.</p>'}</div>`;c.querySelectorAll('[data-delete-comment]').forEach(b=>b.onclick=async()=>{if(!confirm('Delete this comment?'))return;await db.collection('comments').doc(b.dataset.deleteComment).delete();await loadData();adminTab('community');});}
+$('commentForm')?.addEventListener('submit',postComment);
 
-// ---------- Community Comments ----------
-function renderComments(){
-  const list=$('commentsList'), count=$('commentCount');
-  if(!list)return;
-  const comments=state.comments.slice().sort((a,b)=>(dateObj(b.createdAt)?.getTime()||0)-(dateObj(a.createdAt)?.getTime()||0));
-  if(count)count.textContent=`${comments.length} message${comments.length===1?'':'s'}`;
-  list.innerHTML=comments.length ? comments.map(x=>`<article class="comment-card"><div class="comment-avatar">${esc(initials(x.name||'Guest'))}</div><div class="comment-body"><div class="comment-meta"><strong>${esc(x.name||'Guest')}</strong><span>${esc(dateText(x.createdAt)==='TBA'?'Just now':dateText(x.createdAt))}</span></div><p>${esc(x.text||'')}</p></div></article>`).join('') : '<div class="empty-block">No comments yet. Be the first to start the conversation.</div>';
-}
-const commentForm=$('commentForm');
-commentForm?.addEventListener('submit',async e=>{
-  e.preventDefault();
-  const name=$('commentName')?.value.trim(), text=$('commentText')?.value.trim(), msg=$('commentMsg'), btn=commentForm.querySelector('button[type="submit"]');
-  if(!name||!text){if(msg){msg.className='form-msg error';msg.textContent='Enter your name and message.';}return;}
-  btn.disabled=true;btn.textContent='Posting…';
-  if(msg){msg.className='form-msg';msg.textContent='';}
-  try{
-    // Public comments intentionally do not require Firebase Authentication.
-    await db.collection('comments').add({name:name.slice(0,40),text:text.slice(0,500),seasonId:SEASON_ID,createdAt:firebase.firestore.FieldValue.serverTimestamp()});
-    $('commentText').value='';
-    if(msg){msg.className='form-msg ok';msg.textContent='Comment posted successfully.';}
-    await loadData();
-  }catch(err){
-    console.error('comment post failed',err);
-    if(msg){msg.className='form-msg error';msg.textContent='Comment could not be posted. Please try again.';}
-  }finally{btn.disabled=false;btn.textContent='Post Comment';}
-});
-window.deleteComment=async id=>{if(!state.admin||!confirm('Delete this comment?'))return;try{await db.collection('comments').doc(id).delete();await loadData();adminTab('community');}catch(e){console.error(e);alert('Could not delete comment.');}};
+function renderAll(){renderDashboard();renderTeams();renderFixtures();renderStandings();renderPlayers();renderHall();renderNews();renderAwards();renderComments();$('sideSeason').textContent=$('topSeason').textContent=$('footerSeason').textContent=state.season?.name||DEFAULT_SEASON;$('seasonStatus').textContent=state.season?.status||'Ongoing';}
+function showCompetition(c){const teams=activeTeams(c);$('competitionDetail').innerHTML=`<div class="panel-head"><div><span class="eyebrow">${esc(c)}</span><h2>${esc(c)} Control</h2></div><button class="primary" id="detailRegister">Register Player</button></div><div class="detail-grid"><div><b>${teams.length}</b><span>Available teams</span></div><div><b>${state.fixtures.filter(f=>compOf(f)===c).length}</b><span>Fixtures</span></div><div><b>${state.players.filter(p=>p.competition===c).length}</b><span>Players</span></div></div><div class="mini-team-list">${teams.slice(0,12).map(t=>`<span>${logo(t.name,true)}${esc(t.name)}</span>`).join('')}</div>`;$('detailRegister').onclick=()=>{openRegister();$('competition').value=c;populateClubPicker('');};}
+function searchSite(e){const q=(e.target?.value||e||'').trim().toLowerCase();if(!q)return;const t=teamObjects().find(x=>x.name.toLowerCase().includes(q));const p=state.players.find(x=>String(x.name).toLowerCase().includes(q)||String(x.playerId).toLowerCase().includes(q));const f=state.fixtures.find(x=>teamsInFixture(x).some(n=>n.toLowerCase().includes(q)));if(t)go('teams');else if(p)go('players');else if(f)go('fixtures');}
 
 // ---------- Admin ----------
 $('adminLoginBtn')?.addEventListener('click',openAdminLogin);$('adminLoginBtn2')?.addEventListener('click',openAdminLogin);
 function openAdminLogin(){
- const email=prompt('Admin email:');if(!email)return;const password=prompt('Admin password:');if(password===null)return;
- auth.signInWithEmailAndPassword(email.trim(),password).then(async()=>{state.admin=true;await loadData();go('admin');}).catch(e=>{
-  console.error('Firebase admin login failed',e);
-  const map={'auth/user-not-found':'No Firebase user exists for this email.','auth/wrong-password':'Wrong password.','auth/invalid-credential':'Wrong email or password.','auth/operation-not-allowed':'Email/Password sign-in is disabled in Firebase Authentication.','auth/invalid-api-key':'The Firebase API key is invalid.','auth/network-request-failed':'Network connection to Firebase failed.'};
-  alert(`Admin login failed\n\n${map[e.code]||e.message||e.code}`);
- });
+  const email=prompt('Admin email:'); if(!email)return;
+  const password=prompt('Admin password:'); if(password===null)return;
+  auth.signInWithEmailAndPassword(email.trim(),password).then(async()=>{state.admin=true;await loadData();go('admin');}).catch(e=>alert('Admin login failed. Check Firebase Authentication email/password.'));
 }
 async function adminSave(collection,id,data){
   const ref=db.collection(collection).doc(id||db.collection(collection).doc().id);
@@ -234,13 +225,13 @@ async function adminDelete(collection,id){if(!confirm('Delete this item?'))retur
 function renderAdmin(){
  const a=$('adminArea');
  if(!state.admin){a.innerHTML=`<div class="admin-lock"><div class="lock-icon">⚙</div><h2>Admin access required</h2><p>Sign in with your Firebase administrator account.</p><button class="primary" id="adminLoginBtn2">Sign in to Control Center</button></div>`;$('adminLoginBtn2').onclick=openAdminLogin;return;}
- a.innerHTML=`<div class="admin-shell"><div class="admin-nav"><button class="admin-tab active" data-admin-tab="overview">Overview</button><button class="admin-tab" data-admin-tab="competitions">Competitions</button><button class="admin-tab" data-admin-tab="teams">Teams</button><button class="admin-tab" data-admin-tab="fixtures">Fixtures</button><button class="admin-tab" data-admin-tab="ucl">UCL Groups</button><button class="admin-tab" data-admin-tab="results">Results</button><button class="admin-tab" data-admin-tab="members">Members</button><button class="admin-tab" data-admin-tab="promotion">Promotion / Relegation</button><button class="admin-tab" data-admin-tab="news">News</button><button class="admin-tab" data-admin-tab="hall">Hall of Fame</button><button class="admin-tab" data-admin-tab="awards">🏆 Awards</button><button class="admin-tab" data-admin-tab="community">💬 Community</button><button class="admin-tab" data-admin-tab="season">Season</button><button class="ghost" id="adminSignOut">Sign out</button></div><div id="adminContent"></div></div>`;
+ a.innerHTML=`<div class="admin-shell"><div class="admin-nav"><button class="admin-tab active" data-admin-tab="overview">Overview</button><button class="admin-tab" data-admin-tab="competitions">Competitions</button><button class="admin-tab" data-admin-tab="teams">Teams</button><button class="admin-tab" data-admin-tab="fixtures">Fixtures</button><button class="admin-tab" data-admin-tab="ucl">UCL Groups</button><button class="admin-tab" data-admin-tab="results">Results</button><button class="admin-tab" data-admin-tab="members">Members</button><button class="admin-tab" data-admin-tab="promotion">Promotion / Relegation</button><button class="admin-tab" data-admin-tab="news">News</button><button class="admin-tab" data-admin-tab="awards">🏆 Awards</button><button class="admin-tab" data-admin-tab="community">💬 Community</button><button class="admin-tab" data-admin-tab="hall">Hall of Fame</button><button class="admin-tab" data-admin-tab="season">Season</button><button class="ghost" id="adminSignOut">Sign out</button></div><div id="adminContent"></div></div>`;
  document.querySelectorAll('.admin-tab').forEach(b=>b.onclick=()=>adminTab(b.dataset.adminTab));$('adminSignOut').onclick=()=>auth.signOut().then(()=>{state.admin=false;renderAdmin();});adminTab('overview');
 }
 function adminTab(tab){
  document.querySelectorAll('.admin-tab').forEach(b=>b.classList.toggle('active',b.dataset.adminTab===tab));
  const c=$('adminContent');
- if(tab==='overview')adminOverview(c);if(tab==='competitions')adminCompetitions(c);if(tab==='teams')adminTeams(c);if(tab==='fixtures')adminFixtures(c);if(tab==='ucl')adminUCL(c);if(tab==='results')adminResults(c);if(tab==='members')adminMembers(c);if(tab==='promotion')adminPromotion(c);if(tab==='news')adminNews(c);if(tab==='hall')adminHall(c);if(tab==='awards')adminAwards(c);if(tab==='community')adminCommunity(c);if(tab==='season')adminSeason(c);
+ if(tab==='overview')adminOverview(c);if(tab==='competitions')adminCompetitions(c);if(tab==='teams')adminTeams(c);if(tab==='fixtures')adminFixtures(c);if(tab==='ucl')adminUCL(c);if(tab==='results')adminResults(c);if(tab==='members')adminMembers(c);if(tab==='promotion')adminPromotion(c);if(tab==='news')adminNews(c);if(tab==='awards')adminAwards(c);if(tab==='community')adminCommunity(c);if(tab==='hall')adminHall(c);if(tab==='season')adminSeason(c);
 }
 function adminOverview(c){
  const active=(state.season?.activeCompetitions||ALL_COMPETITIONS);
@@ -398,41 +389,8 @@ function adminMembers(c){const ps=state.players.slice().sort((a,b)=>String(a.nam
 window.deleteMember=async id=>{const p=state.players.find(x=>x.id===id);if(!p)return;if(!confirm(`Remove ${p.name} from ${state.season?.name||DEFAULT_SEASON}? This deletes the registration.`))return;try{const batch=db.batch();batch.delete(db.collection('players').doc(id));if(p.lockId)batch.delete(db.collection('playerTeamLocks').doc(p.lockId));await batch.commit();await loadData();alert('Member removed.');adminTab('members');}catch(e){console.error(e);alert('Could not remove member. Check Firestore Rules for admin writes.');}};
 window.deleteNews=id=>adminDelete('news',id);
 function adminHall(c){c.innerHTML=`<div class="admin-heading"><div><p class="eyebrow">LEGACY</p><h2>Hall of Fame</h2><p>Record champions by competition and Season.</p></div></div><div class="admin-form"><input id="hallSeason" value="${esc(state.season?.name||DEFAULT_SEASON)}" placeholder="Season"><select id="hallComp"><option>Premier League</option><option>Championship</option><option>UCL</option></select><input id="hallWinner" placeholder="Champion / Team"><input id="hallDate" type="date"><button class="primary" id="saveHall">Add Champion</button></div><div class="admin-list">${state.hall.map(h=>`<article class="admin-item"><b>🏆 ${esc(h.winner||h.team)}</b><span>${esc(h.season||'Season')} • ${esc(h.competition||'')}</span></article>`).join('')}</div>`;$('saveHall').onclick=async()=>{await adminSave('hallOfFame',null,{season:$('hallSeason').value.trim(),competition:$('hallComp').value,winner:$('hallWinner').value.trim(),date:$('hallDate').value,seasonId:SEASON_ID});adminTab('hall');};}
-
-function adminAwards(c){
- const current=state.awards.filter(a=>!a.seasonId||a.seasonId===SEASON_ID);
- const categories=['Player of the Tournament','Top Scorer','Best Defender','Ballon d\'Or','European Top Scorer','European Best Defender'];
- c.innerHTML=`<div class="admin-heading"><div><p class="eyebrow">AWARDS CONTROL</p><h2>Awards Management</h2><p>Manually publish nominees, winners and the Ballon d'Or Top 8. Player of the Tournament supports public voting.</p></div></div>
- <div class="admin-form awards-admin-form">
-  <select id="awardCategory">${categories.map(x=>`<option>${x}</option>`).join('')}</select>
-  <select id="awardCompetition"><option>GLOBAL</option>${[...MAJOR_LEAGUES,'Championship','UCL'].map(x=>`<option>${x}</option>`).join('')}</select>
-  <input id="awardWinner" placeholder="Winner / announced player">
-  <input id="awardNominees" placeholder="Player of Tournament: exactly 3 names, separated by commas">
-  <input id="awardTop8" placeholder="Ballon d'Or Top 8: 8 names, separated by commas">
-  <input id="awardSeason" value="${esc(state.season?.name||DEFAULT_SEASON)}" placeholder="Season">
-  <button class="primary" id="saveAward">Publish / Update Award</button>
- </div>
- <div class="admin-list">${current.map(a=>`<article class="admin-item"><div><b>${esc(a.category)} • ${esc(a.competition||'GLOBAL')}</b><span>${esc(a.winner||'Winner not announced')}</span></div><p>${a.category==='Player of the Tournament'?`Nominees: ${esc((a.nominees||[]).join(', '))}`:''}${a.category==="Ballon d'Or"&&a.top8?.length?`Top 8: ${esc(a.top8.join(', '))}`:''}</p><button class="mini-btn danger" onclick="deleteAward('${a.id}')">Delete</button></article>`).join('')||'<p class="muted">No awards published yet.</p>'}</div>`;
- $('saveAward').onclick=async()=>{
-   const category=$('awardCategory').value, comp=(['Ballon d\'Or','European Top Scorer','European Best Defender'].includes(category)?'GLOBAL':$('awardCompetition').value);
-   const nominees=$('awardNominees').value.split(',').map(x=>x.trim()).filter(Boolean).slice(0,3);
-   const top8=$('awardTop8').value.split(',').map(x=>x.trim()).filter(Boolean).slice(0,8);
-   if(category==='Player of the Tournament' && nominees.length!==3){alert('Enter exactly 3 nominees for Player of the Tournament.');return;}
-   const id=awardIdFor(category,comp);
-   await adminSave('awards',id,{id,category,competition:comp,season:$('awardSeason').value.trim()||DEFAULT_SEASON,seasonId:SEASON_ID,winner:$('awardWinner').value.trim(),nominees,top8,image:awardImage(category)});
-   adminTab('awards');
- };
-}
-async function deleteAward(id){if(!state.admin||!confirm('Delete this award?'))return;await db.collection('awards').doc(id).delete();await loadData();adminTab('awards');}
-window.deleteAward=deleteAward;
-function adminCommunity(c){
- const cs=state.comments.slice().sort((a,b)=>(dateObj(b.createdAt)||0)-(dateObj(a.createdAt)||0));
- c.innerHTML=`<div class="admin-heading"><div><p class="eyebrow">COMMUNITY CONTROL</p><h2>Comments & Chat</h2><p>Moderate public community messages.</p></div></div><div class="admin-list">${cs.length?cs.map(x=>`<article class="admin-item"><div><b>${esc(x.name||'Guest')}</b><span>${esc(dateText(x.createdAt)||'Just now')}</span></div><p>${esc(x.text||'')}</p><button class="mini-btn danger" onclick="deleteComment('${x.id}')">Delete</button></article>`).join(''):'<p class="muted">No community messages yet.</p>'}</div>`;
-}
-
 function adminSeason(c){const s=state.season||{};c.innerHTML=`<div class="admin-heading"><div><p class="eyebrow">SEASON MANAGEMENT</p><h2>Season settings</h2></div></div><div class="admin-form"><input id="seasonName" value="${esc(s.name||DEFAULT_SEASON)}" placeholder="Season name"><select id="seasonStatus"><option ${s.status==='Upcoming'?'selected':''}>Upcoming</option><option ${s.status==='Ongoing'?'selected':''}>Ongoing</option><option ${s.status==='Completed'?'selected':''}>Completed</option></select><input id="seasonYear" value="${esc(s.year||'2026')}" placeholder="Year"><button class="primary" id="saveSeason">Save Season</button></div>`;$('saveSeason').onclick=async()=>{const active=state.season?.activeCompetitions||ALL_COMPETITIONS;await adminSave('seasons',SEASON_ID,{name:$('seasonName').value.trim(),status:$('seasonStatus').value,year:$('seasonYear').value,current:true,activeCompetitions:active});adminTab('season');};}
-auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(()=>{});
-auth.onAuthStateChanged(async u=>{state.admin=!!u&&!u.isAnonymous;await loadData();if(document.querySelector('[data-page-content=\"admin\"]')?.classList.contains('active'))renderAdmin();});function adminResults(c){
+auth.onAuthStateChanged(async u=>{state.admin=!!u&&!u.isAnonymous;await loadData();});function adminResults(c){
  const played=state.fixtures.slice().sort((a,b)=>(dateObj(b.date||b.kickoff)||0)-(dateObj(a.date||a.kickoff)||0));
  c.innerHTML=`<div class="admin-heading"><div><p class="eyebrow">RESULT CONTROL</p><h2>Match Results</h2><p>Search for a team or fixture, then enter or update the final score.</p></div></div>
  <div class="form-grid admin-form" style="margin-bottom:16px"><input id="resultSearch" placeholder="Search team, fixture or competition..." autocomplete="off"><button class="primary" id="runResultSearch">Search</button><button class="ghost" id="clearResultSearch">Clear</button></div>
