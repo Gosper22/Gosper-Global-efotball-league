@@ -45,3 +45,4 @@
 
 .inline-award-svg{display:block;overflow:visible}.award-hero-inline-art{position:absolute;right:55px;bottom:5px;width:270px;height:300px;z-index:2;display:grid;place-items:center;filter:drop-shadow(0 22px 35px #000b)}.award-hero-inline-art .hero-art{width:270px;height:300px}.admin-nav .admin-tab{font-size:12px}
 @media(max-width:700px){.award-hero-inline-art{right:12px;width:150px;height:190px;opacity:.78}.award-hero-inline-art .hero-art{width:150px;height:190px}}
+.comment-meta strong{font-size:12px}.comment-form button:disabled{opacity:.6;cursor:not-allowed}.form-msg.ok{color:#a6e85a}.form-msg.error{color:#ff9c9c}
