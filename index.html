@@ -29,6 +29,8 @@
         <button class="nav-item" data-page="standings"><span>▤</span>Standings</button>
         <button class="nav-item" data-page="players"><span>♙</span>Players</button>
         <button class="nav-item" data-page="hall"><span>♛</span>Hall of Fame</button>
+        <button class="nav-item" data-page="awards"><span>🏅</span>Awards</button>
+        <button class="nav-item" data-page="community"><span>💬</span>Community</button>
         <button class="nav-item" data-page="news"><span>◉</span>News</button>
       </nav>
       <div class="sidebar-bottom">
@@ -84,6 +86,36 @@
       <section class="page" data-page-content="players"><div class="page-head"><div><p class="eyebrow">REGISTERED PLAYERS</p><h1>Players</h1><p class="muted">Current-season registrations.</p></div><button class="primary" id="registerPlayerBtn">Register Player</button></div><div id="playersGrid" class="players-grid"><div class="empty-block">Loading players…</div></div></section>
 
       <section class="page" data-page-content="hall"><div class="page-head"><div><p class="eyebrow">LEGACY</p><h1>Hall of Fame</h1><p class="muted">Champions recorded by Season.</p></div></div><div id="hallGrid" class="hall-grid"><div class="empty-block">No champions published yet.</div></div></section>
+
+      <section class="page awards-page" data-page-content="awards">
+        <div class="page-head awards-page-head">
+          <div><p class="eyebrow">GOSPER GLOBAL • AWARDS</p><h1>Awards</h1><p class="muted">Recognising the players who define every competition and the global season.</p></div>
+          <div class="award-season-badge"><span>SEASON</span><b id="awardsSeason">Season 1</b></div>
+        </div>
+        <section class="ballon-hero">
+          <div class="ballon-glow"></div><div class="ballon-copy">
+            <span class="award-kicker">THE GLOBAL CROWN</span><h2>Ballon d'Or</h2>
+            <p>The premier global individual award. Nominees are selected by the administrator; the winner is announced at the end of the season.</p>
+            <div class="ballon-winner" id="ballonWinner"><span>WINNER</span><strong>Winner not announced yet</strong></div>
+          </div>
+          <img class="award-hero-image" src="assets/award-ballon-dor.svg" alt="Ballon d'Or trophy">
+        </section>
+        <div id="ballonTop8" class="ballon-top8"></div>
+        <div class="award-section-title"><div><p class="eyebrow">GLOBAL AWARDS</p><h2>Season-wide honours</h2></div><span>GOSPER GLOBAL</span></div>
+        <div id="globalAwardsGrid" class="awards-grid global-awards-grid"></div>
+        <div class="award-section-title"><div><p class="eyebrow">COMPETITION AWARDS</p><h2>League & UCL honours</h2><p class="muted">Every league and UCL has Player of the Tournament, Top Scorer and Best Defender.</p></div></div>
+        <div id="competitionAwards" class="competition-awards"></div>
+      </section>
+
+      <section class="page community-page" data-page-content="community">
+        <div class="page-head"><div><p class="eyebrow">GOSPER GLOBAL • COMMUNITY</p><h1>Comments & Chat</h1><p class="muted">Talk about matches, awards and league news with other supporters.</p></div></div>
+        <div class="community-shell">
+          <div class="community-banner"><div><span class="award-kicker">LEAGUE COMMUNITY</span><h2>Matchday Talk</h2><p>Share your thoughts, celebrate players and discuss the latest Gosper Global action.</p></div><div class="community-mark">💬</div></div>
+          <form id="commentForm" class="comment-form"><input id="commentName" maxlength="40" placeholder="Your name" required><textarea id="commentText" maxlength="500" placeholder="Write a comment or chat message..." required></textarea><button class="primary" type="submit">Post Comment</button><span id="commentMsg" class="form-msg" aria-live="polite"></span></form>
+          <div class="comments-head"><h2>Community Chat</h2><span id="commentCount">0 messages</span></div>
+          <div id="commentsList" class="comments-list"><div class="empty-block">Loading community messages…</div></div>
+        </div>
+      </section>
 
       <section class="page" data-page-content="news"><div class="page-head news-page-head"><div><p class="eyebrow">GOSPER GLOBAL • NEWSROOM</p><h1>News & Announcements</h1><p class="muted">Official league updates, matchday announcements and important notices.</p></div><div class="news-live-pill"><i></i><span>LIVE UPDATES</span></div></div><div id="newsGrid" class="news-grid"><div class="empty-block">No announcements published yet.</div></div></section>
 

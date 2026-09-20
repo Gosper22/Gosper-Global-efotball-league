@@ -28,7 +28,7 @@ const catalog=[
 ['Atalanta','Championship','https://images.fotmob.com/image_resources/logo/teamlogo/8524.png'],['Fiorentina','Championship','https://images.fotmob.com/image_resources/logo/teamlogo/8535.png'],['Bologna','Championship','https://images.fotmob.com/image_resources/logo/teamlogo/9857.png'],['Torino','Championship','https://images.fotmob.com/image_resources/logo/teamlogo/9804.png']
 ].map(([name,competition,logo])=>({name,competition,logo}));
 
-const state={teams:[],players:[],fixtures:[],news:[],hall:[],season:null,admin:false};
+const state={teams:[],players:[],fixtures:[],news:[],hall:[],awards:[],comments:[],awardVotes:[],season:null,admin:false};
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 const initials=s=>String(s||'?').split(/\s+/).filter(Boolean).slice(0,2).map(x=>x[0]).join('').toUpperCase();
@@ -37,7 +37,7 @@ function dateText(v){const d=dateObj(v);return d?d.toLocaleDateString(undefined,
 function logoUrl(name){const t=state.teams.find(x=>x.name===name)||catalog.find(x=>x.name===name);return t?.logo||'';}
 function logo(name,small=false){const src=logoUrl(name);return src?`<span class="logo-box ${small?'sm':''}"><img class="team-logo ${small?'sm':''}" src="${src}" alt="${esc(name)} logo" loading="lazy" onerror="this.parentElement.classList.add('failed');this.remove()"><span class="logo-fallback ${small?'sm':''}">${esc(initials(name))}</span></span>`:`<span class="logo-box ${small?'sm':''}"><span class="logo-fallback ${small?'sm':''}">${esc(initials(name))}</span></span>`}
 
-function go(page){document.querySelectorAll('.page').forEach(x=>x.classList.toggle('active',x.dataset.pageContent===page));document.querySelectorAll('[data-page]').forEach(x=>x.classList.toggle('active',x.dataset.page===page));$('sidebar')?.classList.remove('open');window.scrollTo({top:0,behavior:'smooth'});if(page==='teams')renderTeams();if(page==='fixtures')renderFixtures();if(page==='standings')renderStandings();if(page==='players')renderPlayers();if(page==='hall')renderHall();if(page==='news')renderNews();}
+function go(page){document.querySelectorAll('.page').forEach(x=>x.classList.toggle('active',x.dataset.pageContent===page));document.querySelectorAll('[data-page]').forEach(x=>x.classList.toggle('active',x.dataset.page===page));$('sidebar')?.classList.remove('open');window.scrollTo({top:0,behavior:'smooth'});if(page==='teams')renderTeams();if(page==='fixtures')renderFixtures();if(page==='standings')renderStandings();if(page==='players')renderPlayers();if(page==='hall')renderHall();if(page==='awards')renderAwards();if(page==='community')renderComments();if(page==='news')renderNews();}
 document.addEventListener('click',e=>{const b=e.target.closest('[data-page]');if(b)go(b.dataset.page);});
 $('mobileMenu')?.addEventListener('click',()=>$('sidebar').classList.toggle('open'));
 $('registerCta')?.addEventListener('click',openRegister);$('registerPlayerBtn')?.addEventListener('click',openRegister);$('closeRegister')?.addEventListener('click',closeRegister);$('registerModal')?.addEventListener('click',e=>{if(e.target===$('registerModal'))closeRegister()});
@@ -112,7 +112,71 @@ try{
 }});
 
 async function getAll(c){try{const s=await db.collection(c).get();return s.docs.map(d=>({id:d.id,...d.data()}));}catch(e){console.warn(c,e);return[];}}
-async function loadData(){const [teams,players,fixtures,news,hall,seasons]=await Promise.all(['teams','players','fixtures','news','hallOfFame','seasons'].map(getAll));state.teams=teams;state.players=players.filter(p=>p.seasonId===SEASON_ID||!p.seasonId);state.fixtures=fixtures;state.news=news;state.hall=hall;state.season=seasons.find(s=>s.id===SEASON_ID)||seasons.find(s=>s.current===true)||{id:SEASON_ID,name:DEFAULT_SEASON,status:'Ongoing'};renderAll();if(state.admin)renderAdmin();}
+
+function awardImage(category){
+ const c=String(category||'').toLowerCase();
+ if(c.includes("ballon")) return "assets/award-ballon-dor.svg";
+ if(c.includes("top scorer")) return "assets/award-golden-boot.svg";
+ if(c.includes("defender")) return "assets/award-defender.svg";
+ if(c.includes("player of the tournament")) return "assets/award-player.svg";
+ return "assets/award-star.svg";
+}
+function awardIdFor(category,competition='GLOBAL'){
+ return `${SEASON_ID}__${String(competition||'GLOBAL').toLowerCase().replace(/[^a-z0-9]+/g,'-')}__${String(category).toLowerCase().replace(/[^a-z0-9]+/g,'-')}`;
+}
+function awardVotesFor(id){return state.awardVotes.filter(v=>v.awardId===id);}
+function voteCounts(award){
+ const counts={}; (award.nominees||[]).forEach(n=>counts[n]=0);
+ awardVotesFor(award.id).forEach(v=>{if(counts[v.nominee]!==undefined)counts[v.nominee]++;});
+ return counts;
+}
+function renderAwards(){
+ const awards=state.awards.filter(a=>!a.seasonId||a.seasonId===SEASON_ID);
+ $('awardsSeason').textContent=state.season?.name||DEFAULT_SEASON;
+ const ballon=awards.find(a=>String(a.category).toLowerCase()==="ballon d'or" || String(a.category).toLowerCase()==="ballon dor");
+ $('ballonWinner').innerHTML=ballon?.winner
+   ? `<span>WINNER • ${esc(ballon.season||state.season?.name||DEFAULT_SEASON)}</span><strong>${esc(ballon.winner)}</strong>`
+   : `<span>WINNER</span><strong>Winner not announced yet</strong>`;
+ const top8=(ballon?.top8||[]).filter(Boolean).slice(0,8);
+ $('ballonTop8').innerHTML=top8.length
+   ? `<div class="top8-title"><span>FINAL BALLOT</span><h3>Ballon d'Or Top 8</h3></div><div class="top8-grid">${top8.map((n,i)=>`<div class="top8-card"><b>${i+1}</b><span>${esc(n)}</span></div>`).join('')}</div>`
+   : `<div class="top8-empty">The Ballon d'Or Top 8 will appear here when the administrator publishes the final list.</div>`;
+ const global=awards.filter(a=>['ballon d\'or','ballon dor','european top scorer','european best defender'].includes(String(a.category).toLowerCase()));
+ $('globalAwardsGrid').innerHTML=global.length ? global.map(a=>awardCard(a,true)).join('') : '<div class="empty-block">Global award results will appear here.</div>';
+ const comps=[...MAJOR_LEAGUES,'Championship','UCL'];
+ $('competitionAwards').innerHTML=comps.map(comp=>{
+   const aa=awards.filter(a=>String(a.competition||'')===comp && ['Player of the Tournament','Top Scorer','Best Defender'].includes(a.category));
+   return `<section class="competition-award-block"><div class="competition-award-heading"><div><span class="award-kicker">${comp==='UCL'?'EUROPEAN NIGHT':'COMPETITION HONOURS'}</span><h3>${esc(comp)}</h3></div><span>3 AWARDS</span></div><div class="awards-grid">${['Player of the Tournament','Top Scorer','Best Defender'].map(cat=>{const a=aa.find(x=>x.category===cat);return a?awardCard(a,false):emptyAwardCard(cat,comp);}).join('')}</div></section>`;
+ }).join('');
+}
+function emptyAwardCard(category,competition){
+ return `<article class="award-card award-empty-card"><img src="${awardImage(category)}" alt=""><div class="award-card-copy"><span class="award-kicker">${esc(competition)}</span><h3>${esc(category)}</h3><p>Administrator has not published this award yet.</p></div></article>`;
+}
+function awardCard(a,global=false){
+ const counts=voteCounts(a), nominees=(a.nominees||[]).filter(Boolean);
+ const isVote=a.category==='Player of the Tournament' && nominees.length;
+ return `<article class="award-card ${global?'global-award-card':''}">
+   <div class="award-art"><img src="${awardImage(a.category)}" alt="${esc(a.category)}"><span>${esc(a.competition||'GLOBAL')}</span></div>
+   <div class="award-card-copy"><span class="award-kicker">${esc(a.season||state.season?.name||DEFAULT_SEASON)}</span><h3>${esc(a.category)}</h3>
+   ${a.winner?`<div class="award-winner-line"><small>WINNER</small><strong>${esc(a.winner)}</strong></div>`:'<p>Winner not announced yet.</p>'}
+   ${isVote?`<div class="vote-title">VOTE FOR PLAYER OF THE TOURNAMENT</div><div class="nominee-list">${nominees.map(n=>`<button class="nominee-btn" onclick="castAwardVote('${a.id}',${JSON.stringify(n)})"><span>${esc(n)}</span><b>${counts[n]||0}</b></button>`).join('')}</div><small class="vote-note">One vote per award on this device/session.</small>`:''}
+   </div></article>`;
+}
+async function castAwardVote(awardId,nominee){
+ try{
+   if(!(await ensureAnon())){alert('Voting requires anonymous sign-in to be enabled in Firebase.');return;}
+   const uid=auth.currentUser.uid, id=`${awardId}__${uid}`;
+   const ref=db.collection('awardVotes').doc(id);
+   const snap=await ref.get();
+   if(snap.exists){alert('You have already voted in this award.');return;}
+   await ref.set({awardId,nominee,uid,seasonId:SEASON_ID,createdAt:firebase.firestore.FieldValue.serverTimestamp()});
+   await loadData();
+   alert(`Vote recorded for ${nominee}.`);
+ }catch(e){console.error(e);alert('Vote could not be recorded.');}
+}
+window.castAwardVote=castAwardVote;
+
+async function loadData(){const [teams,players,fixtures,news,hall,seasons,awards,comments,awardVotes]=await Promise.all(['teams','players','fixtures','news','hallOfFame','seasons','awards','comments','awardVotes'].map(getAll));state.teams=teams;state.players=players.filter(p=>p.seasonId===SEASON_ID||!p.seasonId);state.fixtures=fixtures;state.news=news;state.hall=hall;state.awards=awards;state.comments=comments;state.awardVotes=awardVotes;state.season=seasons.find(s=>s.id===SEASON_ID)||seasons.find(s=>s.current===true)||{id:SEASON_ID,name:DEFAULT_SEASON,status:'Ongoing'};renderAll();if(state.admin)renderAdmin();}
 function score(f){const h=f.homeScore??f.homeGoals,a=f.awayScore??f.awayGoals;return h!==undefined&&h!==null&&a!==undefined&&a!==null&&h!==''&&a!==''?{h:+h,a:+a}:null;}
 function teamsInFixture(f){return [f.homeTeam||f.home||f.teamA||'',f.awayTeam||f.away||f.teamB||''];}
 function compOf(f){return f.competition||'Premier League';}
@@ -180,9 +244,26 @@ function renderDashboard(){
  }).join(''):`<div class="empty-block">No fixtures published yet.</div>`;
  $('dashPlayers').textContent=state.players.length;$('dashFixtures').textContent=state.fixtures.length;$('dashPlayed').textContent=state.fixtures.filter(f=>score(f)).length;$('dashTeams').textContent=teamObjects().length;
 }
-function renderAll(){renderDashboard();renderTeams();renderFixtures();renderStandings();renderPlayers();renderHall();renderNews();$('sideSeason').textContent=$('topSeason').textContent=$('footerSeason').textContent=state.season?.name||DEFAULT_SEASON;$('seasonStatus').textContent=state.season?.status||'Ongoing';}
+function renderAll(){renderDashboard();renderTeams();renderFixtures();renderStandings();renderPlayers();renderHall();renderNews();renderAwards();renderComments();$('sideSeason').textContent=$('topSeason').textContent=$('footerSeason').textContent=state.season?.name||DEFAULT_SEASON;$('seasonStatus').textContent=state.season?.status||'Ongoing';}
 function showCompetition(c){const teams=activeTeams(c);$('competitionDetail').innerHTML=`<div class="panel-head"><div><span class="eyebrow">${esc(c)}</span><h2>${esc(c)} Control</h2></div><button class="primary" id="detailRegister">Register Player</button></div><div class="detail-grid"><div><b>${teams.length}</b><span>Available teams</span></div><div><b>${state.fixtures.filter(f=>compOf(f)===c).length}</b><span>Fixtures</span></div><div><b>${state.players.filter(p=>p.competition===c).length}</b><span>Players</span></div></div><div class="mini-team-list">${teams.slice(0,12).map(t=>`<span>${logo(t.name,true)}${esc(t.name)}</span>`).join('')}</div>`;$('detailRegister').onclick=()=>{openRegister();$('competition').value=c;populateClubPicker('');};}
 function searchSite(e){const q=(e.target?.value||e||'').trim().toLowerCase();if(!q)return;const t=teamObjects().find(x=>x.name.toLowerCase().includes(q));const p=state.players.find(x=>String(x.name).toLowerCase().includes(q)||String(x.playerId).toLowerCase().includes(q));const f=state.fixtures.find(x=>teamsInFixture(x).some(n=>n.toLowerCase().includes(q)));if(t)go('teams');else if(p)go('players');else if(f)go('fixtures');}
+
+
+function renderComments(){
+ const cs=state.comments.slice().sort((a,b)=>(dateObj(b.createdAt)||0)-(dateObj(a.createdAt)||0));
+ $('commentCount').textContent=`${cs.length} ${cs.length===1?'message':'messages'}`;
+ $('commentsList').innerHTML=cs.length?cs.map(c=>`<article class="comment-card"><div class="comment-avatar">${esc(initials(c.name||'Guest'))}</div><div class="comment-body"><div class="comment-meta"><b>${esc(c.name||'Guest')}</b><span>${esc(dateText(c.createdAt)||'Just now')}</span></div><p>${esc(c.text)}</p></div></article>`).join(''):'<div class="empty-block">No messages yet. Start the conversation.</div>';
+}
+$('commentForm')?.addEventListener('submit',async e=>{
+ e.preventDefault();
+ const name=$('commentName').value.trim(), text=$('commentText').value.trim(), msg=$('commentMsg');
+ if(!name||!text)return;
+ if(!(await ensureAnon())){msg.className='form-msg error';msg.textContent='Chat is temporarily unavailable.';return;}
+ const btn=e.target.querySelector('button');btn.disabled=true;msg.className='form-msg';msg.textContent='Posting…';
+ try{await db.collection('comments').add({name:name.slice(0,40),text:text.slice(0,500),uid:auth.currentUser.uid,seasonId:SEASON_ID,createdAt:firebase.firestore.FieldValue.serverTimestamp()});$('commentText').value='';msg.className='form-msg ok';msg.textContent='Posted.';await loadData();}catch(err){console.error(err);msg.className='form-msg error';msg.textContent='Could not post comment.';}finally{btn.disabled=false;}
+});
+function deleteComment(id){if(!state.admin)return;if(!confirm('Delete this community message?'))return;db.collection('comments').doc(id).delete().then(()=>loadData());}
+window.deleteComment=deleteComment;
 
 // ---------- Admin ----------
 $('adminLoginBtn')?.addEventListener('click',openAdminLogin);$('adminLoginBtn2')?.addEventListener('click',openAdminLogin);
@@ -206,7 +287,7 @@ function renderAdmin(){
 function adminTab(tab){
  document.querySelectorAll('.admin-tab').forEach(b=>b.classList.toggle('active',b.dataset.adminTab===tab));
  const c=$('adminContent');
- if(tab==='overview')adminOverview(c);if(tab==='competitions')adminCompetitions(c);if(tab==='teams')adminTeams(c);if(tab==='fixtures')adminFixtures(c);if(tab==='ucl')adminUCL(c);if(tab==='results')adminResults(c);if(tab==='members')adminMembers(c);if(tab==='promotion')adminPromotion(c);if(tab==='news')adminNews(c);if(tab==='hall')adminHall(c);if(tab==='season')adminSeason(c);
+ if(tab==='overview')adminOverview(c);if(tab==='competitions')adminCompetitions(c);if(tab==='teams')adminTeams(c);if(tab==='fixtures')adminFixtures(c);if(tab==='ucl')adminUCL(c);if(tab==='results')adminResults(c);if(tab==='members')adminMembers(c);if(tab==='promotion')adminPromotion(c);if(tab==='news')adminNews(c);if(tab==='hall')adminHall(c);if(tab==='awards')adminAwards(c);if(tab==='community')adminCommunity(c);if(tab==='season')adminSeason(c);
 }
 function adminOverview(c){
  const active=(state.season?.activeCompetitions||ALL_COMPETITIONS);
@@ -364,6 +445,38 @@ function adminMembers(c){const ps=state.players.slice().sort((a,b)=>String(a.nam
 window.deleteMember=async id=>{const p=state.players.find(x=>x.id===id);if(!p)return;if(!confirm(`Remove ${p.name} from ${state.season?.name||DEFAULT_SEASON}? This deletes the registration.`))return;try{const batch=db.batch();batch.delete(db.collection('players').doc(id));if(p.lockId)batch.delete(db.collection('playerTeamLocks').doc(p.lockId));await batch.commit();await loadData();alert('Member removed.');adminTab('members');}catch(e){console.error(e);alert('Could not remove member. Check Firestore Rules for admin writes.');}};
 window.deleteNews=id=>adminDelete('news',id);
 function adminHall(c){c.innerHTML=`<div class="admin-heading"><div><p class="eyebrow">LEGACY</p><h2>Hall of Fame</h2><p>Record champions by competition and Season.</p></div></div><div class="admin-form"><input id="hallSeason" value="${esc(state.season?.name||DEFAULT_SEASON)}" placeholder="Season"><select id="hallComp"><option>Premier League</option><option>Championship</option><option>UCL</option></select><input id="hallWinner" placeholder="Champion / Team"><input id="hallDate" type="date"><button class="primary" id="saveHall">Add Champion</button></div><div class="admin-list">${state.hall.map(h=>`<article class="admin-item"><b>🏆 ${esc(h.winner||h.team)}</b><span>${esc(h.season||'Season')} • ${esc(h.competition||'')}</span></article>`).join('')}</div>`;$('saveHall').onclick=async()=>{await adminSave('hallOfFame',null,{season:$('hallSeason').value.trim(),competition:$('hallComp').value,winner:$('hallWinner').value.trim(),date:$('hallDate').value,seasonId:SEASON_ID});adminTab('hall');};}
+
+function adminAwards(c){
+ const current=state.awards.filter(a=>!a.seasonId||a.seasonId===SEASON_ID);
+ const categories=['Player of the Tournament','Top Scorer','Best Defender','Ballon d\'Or','European Top Scorer','European Best Defender'];
+ c.innerHTML=`<div class="admin-heading"><div><p class="eyebrow">AWARDS CONTROL</p><h2>Awards Management</h2><p>Manually publish nominees, winners and the Ballon d'Or Top 8. Player of the Tournament supports public voting.</p></div></div>
+ <div class="admin-form awards-admin-form">
+  <select id="awardCategory">${categories.map(x=>`<option>${x}</option>`).join('')}</select>
+  <select id="awardCompetition"><option>GLOBAL</option>${[...MAJOR_LEAGUES,'Championship','UCL'].map(x=>`<option>${x}</option>`).join('')}</select>
+  <input id="awardWinner" placeholder="Winner / announced player">
+  <input id="awardNominees" placeholder="Player of Tournament nominees — 3 names separated by commas">
+  <input id="awardTop8" placeholder="Ballon d'Or Top 8 — 8 names separated by commas">
+  <input id="awardSeason" value="${esc(state.season?.name||DEFAULT_SEASON)}" placeholder="Season">
+  <button class="primary" id="saveAward">Publish / Update Award</button>
+ </div>
+ <div class="admin-list">${current.map(a=>`<article class="admin-item"><div><b>${esc(a.category)} • ${esc(a.competition||'GLOBAL')}</b><span>${esc(a.winner||'Winner not announced')}</span></div><p>${a.category==='Player of the Tournament'?`Nominees: ${esc((a.nominees||[]).join(', '))}`:''}${a.category==="Ballon d'Or"&&a.top8?.length?`Top 8: ${esc(a.top8.join(', '))}`:''}</p><button class="mini-btn danger" onclick="deleteAward('${a.id}')">Delete</button></article>`).join('')||'<p class="muted">No awards published yet.</p>'}</div>`;
+ $('saveAward').onclick=async()=>{
+   const category=$('awardCategory').value, comp=$('awardCompetition').value;
+   const nominees=$('awardNominees').value.split(',').map(x=>x.trim()).filter(Boolean).slice(0,3);
+   const top8=$('awardTop8').value.split(',').map(x=>x.trim()).filter(Boolean).slice(0,8);
+   if(category==='Player of the Tournament' && nominees.length!==3){alert('Enter exactly 3 nominees for Player of the Tournament.');return;}
+   const id=awardIdFor(category,comp);
+   await adminSave('awards',id,{id,category,competition:comp,season:$('awardSeason').value.trim()||DEFAULT_SEASON,seasonId:SEASON_ID,winner:$('awardWinner').value.trim(),nominees,top8,image:awardImage(category)});
+   adminTab('awards');
+ };
+}
+async function deleteAward(id){if(!state.admin||!confirm('Delete this award?'))return;await db.collection('awards').doc(id).delete();await loadData();adminTab('awards');}
+window.deleteAward=deleteAward;
+function adminCommunity(c){
+ const cs=state.comments.slice().sort((a,b)=>(dateObj(b.createdAt)||0)-(dateObj(a.createdAt)||0));
+ c.innerHTML=`<div class="admin-heading"><div><p class="eyebrow">COMMUNITY CONTROL</p><h2>Comments & Chat</h2><p>Moderate public community messages.</p></div></div><div class="admin-list">${cs.length?cs.map(x=>`<article class="admin-item"><div><b>${esc(x.name||'Guest')}</b><span>${esc(dateText(x.createdAt)||'Just now')}</span></div><p>${esc(x.text||'')}</p><button class="mini-btn danger" onclick="deleteComment('${x.id}')">Delete</button></article>`).join(''):'<p class="muted">No community messages yet.</p>'}</div>`;
+}
+
 function adminSeason(c){const s=state.season||{};c.innerHTML=`<div class="admin-heading"><div><p class="eyebrow">SEASON MANAGEMENT</p><h2>Season settings</h2></div></div><div class="admin-form"><input id="seasonName" value="${esc(s.name||DEFAULT_SEASON)}" placeholder="Season name"><select id="seasonStatus"><option ${s.status==='Upcoming'?'selected':''}>Upcoming</option><option ${s.status==='Ongoing'?'selected':''}>Ongoing</option><option ${s.status==='Completed'?'selected':''}>Completed</option></select><input id="seasonYear" value="${esc(s.year||'2026')}" placeholder="Year"><button class="primary" id="saveSeason">Save Season</button></div>`;$('saveSeason').onclick=async()=>{const active=state.season?.activeCompetitions||ALL_COMPETITIONS;await adminSave('seasons',SEASON_ID,{name:$('seasonName').value.trim(),status:$('seasonStatus').value,year:$('seasonYear').value,current:true,activeCompetitions:active});adminTab('season');};}
 auth.onAuthStateChanged(async u=>{state.admin=!!u&&!u.isAnonymous;await loadData();});function adminResults(c){
  const played=state.fixtures.slice().sort((a,b)=>(dateObj(b.date||b.kickoff)||0)-(dateObj(a.date||a.kickoff)||0));
