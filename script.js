@@ -76,67 +76,58 @@ function populateClubPicker(q=''){
    ? teams.map(t=>`<option value="${esc(t.name)}">${esc(t.name)}</option>`).join('')
    : '<option value="">No available clubs</option>';
 }
-async function ensureAnon(){if(auth.currentUser)return true;try{await auth.signInAnonymously();return true}catch(e){console.error(e);return false}}
-$('registrationForm')?.addEventListener('submit',async e=>{e.preventDefault();const m=$('registrationMsg');m.className='form-msg';m.textContent='Registering…';if(!(await ensureAnon())){m.className='form-msg error';m.textContent='Firebase Anonymous sign-in is not enabled.';return;}const name=$('name').value.trim(),raw=$('pid').value.trim(),key=raw.toLowerCase().replace(/\s+/g,''),competition=$('competition').value,club=$('club').value;if(!name||!key||!club){m.className='form-msg error';m.textContent='Fill all required fields.';return;}const playerDocId=`${SEASON_ID}_${key.replace(/[^a-z0-9_-]/g,'_')}`;
-const ref=db.collection('players').doc(playerDocId);
-const lockKey=`${SEASON_ID}__${competition}__${club}`.toLowerCase().replace(/[^a-z0-9_-]/g,'_');
-const lockRef=db.collection('playerTeamLocks').doc(lockKey);
-try{
-  if(state.players.some(p=>p.seasonId===SEASON_ID&&p.competition===competition&&String(p.club||'').trim().toLowerCase()===club.trim().toLowerCase()&&p.status!=='cancelled')){
-    m.className='form-msg error';
-    m.textContent=`${club} is already registered by another player in ${competition}. Choose another club.`;
-    populateClubPicker('');
-    return;
-  }
-  await db.runTransaction(async tx=>{
-    const snap=await tx.get(ref);
-    if(snap.exists) throw new Error('PLAYER_EXISTS');
-    const lockSnap=await tx.get(lockRef);
-    if(lockSnap.exists) throw new Error('TEAM_TAKEN');
+$('registrationForm')?.addEventListener('submit',async e=>{
+ e.preventDefault();
+ const m=$('registrationMsg'); m.className='form-msg'; m.textContent='Registering…';
+ const name=$('name').value.trim(), raw=$('pid').value.trim(), key=raw.toLowerCase().replace(/\s+/g,''), competition=$('competition').value, club=$('club').value;
+ if(!name||!key||!club){m.className='form-msg error';m.textContent='Fill all required fields.';return;}
+ const playerDocId=`${SEASON_ID}_${key.replace(/[^a-z0-9_-]/g,'_')}`;
+ const ref=db.collection('players').doc(playerDocId);
+ const lockKey=`${SEASON_ID}__${competition}__${club}`.toLowerCase().replace(/[^a-z0-9_-]/g,'_');
+ const lockRef=db.collection('playerTeamLocks').doc(lockKey);
+ try{
+   if(state.players.some(p=>p.seasonId===SEASON_ID&&p.competition===competition&&String(p.club||'').trim().toLowerCase()===club.trim().toLowerCase()&&p.status!=='cancelled')){
+     m.className='form-msg error'; m.textContent=`${club} is already registered by another player in ${competition}. Choose another club.`; populateClubPicker(''); return;
+   }
+   if((await ref.get()).exists) throw new Error('PLAYER_EXISTS');
+   if((await lockRef.get()).exists) throw new Error('TEAM_TAKEN');
+   await ref.set({name,playerId:raw,playerIdKey:key,lockId:lockKey,competition,club,seasonId:SEASON_ID,status:'active',createdAt:firebase.firestore.FieldValue.serverTimestamp()});
+   await lockRef.set({playerDocId,playerIdKey:key,competition,club,seasonId:SEASON_ID,status:'active',createdAt:firebase.firestore.FieldValue.serverTimestamp()});
+   m.className='form-msg ok'; m.textContent=`Registration successful — ${club}`;
+   e.target.reset(); populateClubPicker(''); await loadData(); setTimeout(closeRegister,900);
+ }catch(err){
+   console.error('registration failed',err); m.className='form-msg error';
+   if(err.message==='PLAYER_EXISTS') m.textContent=`This Player ID is already registered for ${state.season?.name||DEFAULT_SEASON}.`;
+   else if(err.message==='TEAM_TAKEN') m.textContent=`${club} is already registered by another player in ${competition}. Choose another club.`;
+   else m.textContent=`Registration failed: ${err.code||err.message||'Firebase error'}`;
+ }
+});
 
-    tx.set(ref,{name,playerId:raw,playerIdKey:key,uid:auth.currentUser.uid,lockId:lockKey,competition,club,seasonId:SEASON_ID,status:'active',createdAt:firebase.firestore.FieldValue.serverTimestamp()});
-    tx.set(lockRef,{playerDocId,playerIdKey:key,uid:auth.currentUser.uid,competition,club,seasonId:SEASON_ID,status:'active',createdAt:firebase.firestore.FieldValue.serverTimestamp()});
-  });
-  m.className='form-msg ok';
-  m.textContent=`Registration successful — ${club}`;
-  e.target.reset();
-  populateClubPicker('');
-  await loadData();
-  setTimeout(closeRegister,900);
-}catch(err){
-  console.error(err);
-  m.className='form-msg error';
-  if(err.message==='PLAYER_EXISTS') m.textContent=`This Player ID is already registered for ${state.season?.name||DEFAULT_SEASON}.`;
-  else if(err.message==='TEAM_TAKEN') m.textContent=`${club} is already registered by another player in ${competition}. Choose another club.`;
-  else m.textContent='Registration failed. Please try again.';
-}});
-
-async function getAll(c){try{const s=await db.collection(c).get();return s.docs.map(d=>({id:d.id,...d.data()}));}catch(e){console.warn(c,e);return[];}}
+async function getAll(c){
+ try{const snap=await db.collection(c).get();return snap.docs.map(d=>({id:d.id,...d.data()}));}
+ catch(e){console.error(`Firestore read failed: ${c}`,e);state.firebaseErrors=state.firebaseErrors||{};state.firebaseErrors[c]=e;return[];}
+}
 async function loadData(){
-  const [teams,players,fixtures,news,hall,seasons,awards,comments,awardVotes]=await Promise.all([
-    'teams','players','fixtures','news','hallOfFame','seasons','awards','comments','awardVotes'
-  ].map(getAll));
-  state.teams=teams;
-  state.players=players.filter(p=>p.seasonId===SEASON_ID||!p.seasonId);
-  state.fixtures=fixtures;
-  state.news=news;
-  state.hall=hall;
-  state.awards=awards.filter(a=>!a.seasonId||a.seasonId===SEASON_ID);
-  state.comments=comments.filter(c=>!c.seasonId||c.seasonId===SEASON_ID);
-  state.awardVotes=awardVotes.filter(v=>!v.seasonId||v.seasonId===SEASON_ID);
-  state.season=seasons.find(s=>s.id===SEASON_ID)||seasons.find(s=>s.current===true)||{id:SEASON_ID,name:DEFAULT_SEASON,status:'Ongoing'};
-  renderAll();
-  renderAwards();
-  renderComments();
-  if(state.admin)renderAdmin();
+ state.firebaseErrors={};
+ const [teams,players,fixtures,news,hall,seasons,awards,comments,awardVotes]=await Promise.all(['teams','players','fixtures','news','hallOfFame','seasons','awards','comments','awardVotes'].map(getAll));
+ state.teams=teams;state.players=players.filter(p=>p.seasonId===SEASON_ID||!p.seasonId);state.fixtures=fixtures;state.news=news;state.hall=hall;
+ state.awards=awards.filter(a=>!a.seasonId||a.seasonId===SEASON_ID);state.comments=comments.filter(c=>!c.seasonId||c.seasonId===SEASON_ID);state.awardVotes=awardVotes.filter(v=>!v.seasonId||v.seasonId===SEASON_ID);
+ state.season=seasons.find(s=>s.id===SEASON_ID)||seasons.find(s=>s.current===true)||{id:SEASON_ID,name:DEFAULT_SEASON,status:'Ongoing',year:'2026',activeCompetitions:ALL_COMPETITIONS};
+ renderAll();renderAwards();renderComments();if(state.admin)renderAdmin();updateFirebaseStatus();
+}
+function updateFirebaseStatus(){
+ let el=document.getElementById('firebaseStatus');
+ if(!el){el=document.createElement('div');el.id='firebaseStatus';el.className='firebase-status';document.body.appendChild(el);}
+ const errors=Object.keys(state.firebaseErrors||{});
+ if(errors.length){el.className='firebase-status error';el.textContent=`Firebase: read error (${errors.length})`;el.title='Collections failing: '+errors.join(', ');}
+ else{el.className='firebase-status ok';el.textContent='Firebase: connected';el.title='Firestore reads are working.';}
 }
 
 function awardArt(category, cls=''){
  const c=String(category||'').toLowerCase();
  let kind='star'; if(c.includes('ballon'))kind='ballon'; else if(c.includes('top scorer'))kind='boot'; else if(c.includes('defender'))kind='defender'; else if(c.includes('player of the tournament'))kind='player';
  const common=`class="inline-award-svg ${cls}" viewBox="0 0 180 220" role="img" aria-label="${esc(category||'Award')}"`;
- if(kind==='ballon') return `<svg ${common}><defs><radialGradient id="bgBall"><stop offset="0" stop-color="#ffe58a" stop-opacity=".42"/><stop offset="1" stop-color="#8a6414" stop-opacity="0"/></radialGradient><linearGradient id="goldBall" x1="0" x2="1"><stop stop-color="#fff1a8"/><stop offset=".45" stop-color="#d5a72d"/><stop offset="1" stop-color="#7b5310"/></linearGradient></defs><circle cx="90" cy="90" r="82" fill="url(#bgBall)"/><g transform="translate(90 26)"><path d="M-30 62 Q0 82 30 62 L24 78 Q0 100-24 78Z" fill="url(#goldBall)"/><path d="M-16 74 L16 74 L11 122 L-11 122Z" fill="#d5a72d"/><ellipse cx="0" cy="127" rx="27" ry="7" fill="#8b6417"/><circle cx="0" cy="35" r="38" fill="url(#goldBall)"/><path d="M-25 27 Q0 4 25 27 Q12 54 0 60 Q-12 54-25 27Z" fill="#f7d968" opacity=".75"/><path d="M-13 14 Q0 2 13 14" fill="none" stroke="#fff2ae" stroke-width="4" opacity=".7"/></g></svg>`;
- if(kind==='boot') return `<svg ${common}><defs><linearGradient id="goldBoot" x1="0" x2="1"><stop stop-color="#fff0a2"/><stop offset=".5" stop-color="#d6a52a"/><stop offset="1" stop-color="#76500d"/></linearGradient></defs><circle cx="90" cy="105" r="76" fill="#d6a52a" opacity=".08"/><path d="M53 37 C67 44 80 48 96 49 L103 87 C108 99 126 103 139 114 L145 131 L42 131 L35 121 L44 111 L57 107 L62 88 L48 58Z" fill="url(#goldBoot)" stroke="#ffe999" stroke-width="2"/><path d="M56 53 L95 61 M51 67 L98 75 M47 82 L101 89" stroke="#fff1a7" stroke-width="4" opacity=".6"/><path d="M42 131 H145" stroke="#fff0a0" stroke-width="6"/></svg>`;
+ if(kind==='ballon') return `<div class="ballon-real-art"><img src="https://upload.wikimedia.org/wikipedia/commons/3/3d/Ballon_d%27Or.png" alt="Ballon d'Or trophy" loading="eager" referrerpolicy="no-referrer"></div>`; if(kind==='boot') return `<svg ${common}><defs><linearGradient id="goldBoot" x1="0" x2="1"><stop stop-color="#fff0a2"/><stop offset=".5" stop-color="#d6a52a"/><stop offset="1" stop-color="#76500d"/></linearGradient></defs><circle cx="90" cy="105" r="76" fill="#d6a52a" opacity=".08"/><path d="M53 37 C67 44 80 48 96 49 L103 87 C108 99 126 103 139 114 L145 131 L42 131 L35 121 L44 111 L57 107 L62 88 L48 58Z" fill="url(#goldBoot)" stroke="#ffe999" stroke-width="2"/><path d="M56 53 L95 61 M51 67 L98 75 M47 82 L101 89" stroke="#fff1a7" stroke-width="4" opacity=".6"/><path d="M42 131 H145" stroke="#fff0a0" stroke-width="6"/></svg>`;
  if(kind==='defender') return `<svg ${common}><defs><linearGradient id="shield" x1="0" x2="1"><stop stop-color="#e7f4d2"/><stop offset=".5" stop-color="#8bb34f"/><stop offset="1" stop-color="#38541f"/></linearGradient></defs><path d="M90 18 L150 39 V92 C150 137 121 169 90 187 C59 169 30 137 30 92 V39Z" fill="url(#shield)" stroke="#eaffbf" stroke-width="3"/><path d="M90 48 L100 72 L126 75 L106 92 L112 117 L90 103 L68 117 L74 92 L54 75 L80 72Z" fill="#17240e" opacity=".9"/></svg>`;
  if(kind==='player') return `<svg ${common}><defs><linearGradient id="pl" x1="0" x2="1"><stop stop-color="#fff3b0"/><stop offset=".55" stop-color="#c99a22"/><stop offset="1" stop-color="#68470b"/></linearGradient></defs><circle cx="90" cy="72" r="35" fill="url(#pl)"/><path d="M37 166 Q45 113 90 113 Q135 113 143 166Z" fill="url(#pl)"/><circle cx="90" cy="72" r="17" fill="#fff0a0" opacity=".45"/><path d="M55 167 H125" stroke="#fff1a3" stroke-width="8" stroke-linecap="round"/></svg>`;
  return `<svg ${common}><defs><linearGradient id="st" x1="0" x2="1"><stop stop-color="#fff1a3"/><stop offset=".5" stop-color="#d2a32a"/><stop offset="1" stop-color="#6b4b0e"/></linearGradient></defs><path d="M90 22 L103 64 L148 64 L112 90 L126 132 L90 106 L54 132 L68 90 L32 64 L77 64Z" fill="url(#st)" stroke="#fff0a1" stroke-width="3"/></svg>`;
@@ -227,9 +218,12 @@ window.deleteComment=async id=>{if(!state.admin||!confirm('Delete this comment?'
 // ---------- Admin ----------
 $('adminLoginBtn')?.addEventListener('click',openAdminLogin);$('adminLoginBtn2')?.addEventListener('click',openAdminLogin);
 function openAdminLogin(){
-  const email=prompt('Admin email:'); if(!email)return;
-  const password=prompt('Admin password:'); if(password===null)return;
-  auth.signInWithEmailAndPassword(email.trim(),password).then(async()=>{state.admin=true;await loadData();go('admin');}).catch(e=>alert('Admin login failed. Check Firebase Authentication email/password.'));
+ const email=prompt('Admin email:');if(!email)return;const password=prompt('Admin password:');if(password===null)return;
+ auth.signInWithEmailAndPassword(email.trim(),password).then(async()=>{state.admin=true;await loadData();go('admin');}).catch(e=>{
+  console.error('Firebase admin login failed',e);
+  const map={'auth/user-not-found':'No Firebase user exists for this email.','auth/wrong-password':'Wrong password.','auth/invalid-credential':'Wrong email or password.','auth/operation-not-allowed':'Email/Password sign-in is disabled in Firebase Authentication.','auth/invalid-api-key':'The Firebase API key is invalid.','auth/network-request-failed':'Network connection to Firebase failed.'};
+  alert(`Admin login failed\n\n${map[e.code]||e.message||e.code}`);
+ });
 }
 async function adminSave(collection,id,data){
   const ref=db.collection(collection).doc(id||db.collection(collection).doc().id);
@@ -437,6 +431,7 @@ function adminCommunity(c){
 }
 
 function adminSeason(c){const s=state.season||{};c.innerHTML=`<div class="admin-heading"><div><p class="eyebrow">SEASON MANAGEMENT</p><h2>Season settings</h2></div></div><div class="admin-form"><input id="seasonName" value="${esc(s.name||DEFAULT_SEASON)}" placeholder="Season name"><select id="seasonStatus"><option ${s.status==='Upcoming'?'selected':''}>Upcoming</option><option ${s.status==='Ongoing'?'selected':''}>Ongoing</option><option ${s.status==='Completed'?'selected':''}>Completed</option></select><input id="seasonYear" value="${esc(s.year||'2026')}" placeholder="Year"><button class="primary" id="saveSeason">Save Season</button></div>`;$('saveSeason').onclick=async()=>{const active=state.season?.activeCompetitions||ALL_COMPETITIONS;await adminSave('seasons',SEASON_ID,{name:$('seasonName').value.trim(),status:$('seasonStatus').value,year:$('seasonYear').value,current:true,activeCompetitions:active});adminTab('season');};}
+auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(()=>{});
 auth.onAuthStateChanged(async u=>{state.admin=!!u&&!u.isAnonymous;await loadData();if(document.querySelector('[data-page-content=\"admin\"]')?.classList.contains('active'))renderAdmin();});function adminResults(c){
  const played=state.fixtures.slice().sort((a,b)=>(dateObj(b.date||b.kickoff)||0)-(dateObj(a.date||a.kickoff)||0));
  c.innerHTML=`<div class="admin-heading"><div><p class="eyebrow">RESULT CONTROL</p><h2>Match Results</h2><p>Search for a team or fixture, then enter or update the final score.</p></div></div>
