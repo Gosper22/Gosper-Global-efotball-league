@@ -113,14 +113,17 @@ try{
 
 async function getAll(c){try{const s=await db.collection(c).get();return s.docs.map(d=>({id:d.id,...d.data()}));}catch(e){console.warn(c,e);return[];}}
 
-function awardImage(category){
+function awardArt(category, cls=''){
  const c=String(category||'').toLowerCase();
- if(c.includes("ballon")) return "assets/award-ballon-dor.svg";
- if(c.includes("top scorer")) return "assets/award-golden-boot.svg";
- if(c.includes("defender")) return "assets/award-defender.svg";
- if(c.includes("player of the tournament")) return "assets/award-player.svg";
- return "assets/award-star.svg";
+ let kind='star'; if(c.includes('ballon'))kind='ballon'; else if(c.includes('top scorer'))kind='boot'; else if(c.includes('defender'))kind='defender'; else if(c.includes('player of the tournament'))kind='player';
+ const common=`class="inline-award-svg ${cls}" viewBox="0 0 180 220" role="img" aria-label="${esc(category||'Award')}"`;
+ if(kind==='ballon') return `<svg ${common}><defs><radialGradient id="bgBall"><stop offset="0" stop-color="#ffe58a" stop-opacity=".42"/><stop offset="1" stop-color="#8a6414" stop-opacity="0"/></radialGradient><linearGradient id="goldBall" x1="0" x2="1"><stop stop-color="#fff1a8"/><stop offset=".45" stop-color="#d5a72d"/><stop offset="1" stop-color="#7b5310"/></linearGradient></defs><circle cx="90" cy="90" r="82" fill="url(#bgBall)"/><g transform="translate(90 26)"><path d="M-30 62 Q0 82 30 62 L24 78 Q0 100-24 78Z" fill="url(#goldBall)"/><path d="M-16 74 L16 74 L11 122 L-11 122Z" fill="#d5a72d"/><ellipse cx="0" cy="127" rx="27" ry="7" fill="#8b6417"/><circle cx="0" cy="35" r="38" fill="url(#goldBall)"/><path d="M-25 27 Q0 4 25 27 Q12 54 0 60 Q-12 54-25 27Z" fill="#f7d968" opacity=".75"/><path d="M-13 14 Q0 2 13 14" fill="none" stroke="#fff2ae" stroke-width="4" opacity=".7"/></g></svg>`;
+ if(kind==='boot') return `<svg ${common}><defs><linearGradient id="goldBoot" x1="0" x2="1"><stop stop-color="#fff0a2"/><stop offset=".5" stop-color="#d6a52a"/><stop offset="1" stop-color="#76500d"/></linearGradient></defs><circle cx="90" cy="105" r="76" fill="#d6a52a" opacity=".08"/><path d="M53 37 C67 44 80 48 96 49 L103 87 C108 99 126 103 139 114 L145 131 L42 131 L35 121 L44 111 L57 107 L62 88 L48 58Z" fill="url(#goldBoot)" stroke="#ffe999" stroke-width="2"/><path d="M56 53 L95 61 M51 67 L98 75 M47 82 L101 89" stroke="#fff1a7" stroke-width="4" opacity=".6"/><path d="M42 131 H145" stroke="#fff0a0" stroke-width="6"/></svg>`;
+ if(kind==='defender') return `<svg ${common}><defs><linearGradient id="shield" x1="0" x2="1"><stop stop-color="#e7f4d2"/><stop offset=".5" stop-color="#8bb34f"/><stop offset="1" stop-color="#38541f"/></linearGradient></defs><path d="M90 18 L150 39 V92 C150 137 121 169 90 187 C59 169 30 137 30 92 V39Z" fill="url(#shield)" stroke="#eaffbf" stroke-width="3"/><path d="M90 48 L100 72 L126 75 L106 92 L112 117 L90 103 L68 117 L74 92 L54 75 L80 72Z" fill="#17240e" opacity=".9"/></svg>`;
+ if(kind==='player') return `<svg ${common}><defs><linearGradient id="pl" x1="0" x2="1"><stop stop-color="#fff3b0"/><stop offset=".55" stop-color="#c99a22"/><stop offset="1" stop-color="#68470b"/></linearGradient></defs><circle cx="90" cy="72" r="35" fill="url(#pl)"/><path d="M37 166 Q45 113 90 113 Q135 113 143 166Z" fill="url(#pl)"/><circle cx="90" cy="72" r="17" fill="#fff0a0" opacity=".45"/><path d="M55 167 H125" stroke="#fff1a3" stroke-width="8" stroke-linecap="round"/></svg>`;
+ return `<svg ${common}><defs><linearGradient id="st" x1="0" x2="1"><stop stop-color="#fff1a3"/><stop offset=".5" stop-color="#d2a32a"/><stop offset="1" stop-color="#6b4b0e"/></linearGradient></defs><path d="M90 22 L103 64 L148 64 L112 90 L126 132 L90 106 L54 132 L68 90 L32 64 L77 64Z" fill="url(#st)" stroke="#fff0a1" stroke-width="3"/></svg>`;
 }
+function awardImage(category){return awardArt(category);}
 function awardIdFor(category,competition='GLOBAL'){
  return `${SEASON_ID}__${String(competition||'GLOBAL').toLowerCase().replace(/[^a-z0-9]+/g,'-')}__${String(category).toLowerCase().replace(/[^a-z0-9]+/g,'-')}`;
 }
@@ -132,7 +135,7 @@ function voteCounts(award){
 }
 function renderAwards(){
  const awards=state.awards.filter(a=>!a.seasonId||a.seasonId===SEASON_ID);
- $('awardsSeason').textContent=state.season?.name||DEFAULT_SEASON;
+ $('awardsSeason').textContent=state.season?.name||DEFAULT_SEASON; if($('ballonArt')) $('ballonArt').innerHTML=awardArt("Ballon d'Or",'hero-art');
  const ballon=awards.find(a=>String(a.category).toLowerCase()==="ballon d'or" || String(a.category).toLowerCase()==="ballon dor");
  $('ballonWinner').innerHTML=ballon?.winner
    ? `<span>WINNER • ${esc(ballon.season||state.season?.name||DEFAULT_SEASON)}</span><strong>${esc(ballon.winner)}</strong>`
@@ -150,13 +153,13 @@ function renderAwards(){
  }).join('');
 }
 function emptyAwardCard(category,competition){
- return `<article class="award-card award-empty-card"><img src="${awardImage(category)}" alt=""><div class="award-card-copy"><span class="award-kicker">${esc(competition)}</span><h3>${esc(category)}</h3><p>Administrator has not published this award yet.</p></div></article>`;
+ return `<article class="award-card award-empty-card"><div class="award-art">${awardArt(category)}<span>${esc(competition)}</span></div><div class="award-card-copy"><span class="award-kicker">${esc(competition)}</span><h3>${esc(category)}</h3><p>Administrator has not published this award yet.</p></div></article>`;
 }
 function awardCard(a,global=false){
  const counts=voteCounts(a), nominees=(a.nominees||[]).filter(Boolean);
  const isVote=a.category==='Player of the Tournament' && nominees.length;
  return `<article class="award-card ${global?'global-award-card':''}">
-   <div class="award-art"><img src="${awardImage(a.category)}" alt="${esc(a.category)}"><span>${esc(a.competition||'GLOBAL')}</span></div>
+   <div class="award-art">${awardArt(a.category)}<span>${esc(a.competition||'GLOBAL')}</span></div>
    <div class="award-card-copy"><span class="award-kicker">${esc(a.season||state.season?.name||DEFAULT_SEASON)}</span><h3>${esc(a.category)}</h3>
    ${a.winner?`<div class="award-winner-line"><small>WINNER</small><strong>${esc(a.winner)}</strong></div>`:'<p>Winner not announced yet.</p>'}
    ${isVote?`<div class="vote-title">VOTE FOR PLAYER OF THE TOURNAMENT</div><div class="nominee-list">${nominees.map(n=>`<button class="nominee-btn" onclick="castAwardVote('${a.id}',${JSON.stringify(n)})"><span>${esc(n)}</span><b>${counts[n]||0}</b></button>`).join('')}</div><small class="vote-note">One vote per award on this device/session.</small>`:''}
@@ -164,106 +167,16 @@ function awardCard(a,global=false){
 }
 async function castAwardVote(awardId,nominee){
  try{
-   if(!(await ensureAnon())){alert('Voting requires anonymous sign-in to be enabled in Firebase.');return;}
-   const uid=auth.currentUser.uid, id=`${awardId}__${uid}`;
-   const ref=db.collection('awardVotes').doc(id);
-   const snap=await ref.get();
-   if(snap.exists){alert('You have already voted in this award.');return;}
-   await ref.set({awardId,nominee,uid,seasonId:SEASON_ID,createdAt:firebase.firestore.FieldValue.serverTimestamp()});
-   await loadData();
-   alert(`Vote recorded for ${nominee}.`);
- }catch(e){console.error(e);alert('Vote could not be recorded.');}
+   let visitorId=localStorage.getItem('gosperVisitorId');
+   if(!visitorId){visitorId=(crypto.randomUUID?crypto.randomUUID():Math.random().toString(36).slice(2)+Date.now());localStorage.setItem('gosperVisitorId',visitorId);}
+   const key=`gosper_voted_${awardId}`;
+   if(localStorage.getItem(key)){alert('You have already voted in this award on this device.');return;}
+   const ref=db.collection('awardVotes').doc(`${awardId}__${visitorId}`);
+   await ref.set({awardId,nominee,visitorId,seasonId:SEASON_ID,createdAt:firebase.firestore.FieldValue.serverTimestamp()});
+   localStorage.setItem(key,'1'); await loadData(); alert(`Vote recorded for ${nominee}.`);
+ }catch(e){console.error(e);alert('Vote could not be recorded. Please try again.');}
 }
 window.castAwardVote=castAwardVote;
-
-async function loadData(){const [teams,players,fixtures,news,hall,seasons,awards,comments,awardVotes]=await Promise.all(['teams','players','fixtures','news','hallOfFame','seasons','awards','comments','awardVotes'].map(getAll));state.teams=teams;state.players=players.filter(p=>p.seasonId===SEASON_ID||!p.seasonId);state.fixtures=fixtures;state.news=news;state.hall=hall;state.awards=awards;state.comments=comments;state.awardVotes=awardVotes;state.season=seasons.find(s=>s.id===SEASON_ID)||seasons.find(s=>s.current===true)||{id:SEASON_ID,name:DEFAULT_SEASON,status:'Ongoing'};renderAll();if(state.admin)renderAdmin();}
-function score(f){const h=f.homeScore??f.homeGoals,a=f.awayScore??f.awayGoals;return h!==undefined&&h!==null&&a!==undefined&&a!==null&&h!==''&&a!==''?{h:+h,a:+a}:null;}
-function teamsInFixture(f){return [f.homeTeam||f.home||f.teamA||'',f.awayTeam||f.away||f.teamB||''];}
-function compOf(f){return f.competition||'Premier League';}
-function table(comp){const map=new Map(teamObjects(comp).map(t=>[t.name,{team:t.name,mp:0,w:0,d:0,l:0,gf:0,ga:0,gd:0,pts:0}]));state.fixtures.filter(f=>compOf(f)===comp&&score(f)&&map.has((f.homeTeam||f.home))&&map.has((f.awayTeam||f.away))).forEach(f=>{const s=score(f),[h,a]=teamsInFixture(f);if(!map.has(h))map.set(h,{team:h,mp:0,w:0,d:0,l:0,gf:0,ga:0,gd:0,pts:0});if(!map.has(a))map.set(a,{team:a,mp:0,w:0,d:0,l:0,gf:0,ga:0,gd:0,pts:0});const H=map.get(h),A=map.get(a);H.mp++;A.mp++;H.gf+=s.h;H.ga+=s.a;A.gf+=s.a;A.ga+=s.h;if(s.h>s.a){H.w++;H.pts+=3;A.l++;}else if(s.a>s.h){A.w++;A.pts+=3;H.l++;}else{H.d++;A.d++;H.pts++;A.pts++;}});return [...map.values()].map(x=>({...x,gd:x.gf-x.ga})).sort((a,b)=>b.pts-a.pts||b.gd-a.gd||b.gf-a.gf||a.team.localeCompare(b.team));}
-function rowHtml(r,i){return `<tr><td><b>${i+1}</b></td><td><div class="team-cell">${logo(r.team,true)}<b>${esc(r.team)}</b></div></td><td>${r.mp}</td><td>${r.w}</td><td>${r.d}</td><td>${r.l}</td><td>${r.gf}</td><td>${r.ga}</td><td>${r.gd}</td><td><b>${r.pts}</b></td></tr>`;}
-function renderStandings(){const c=$('standingsCompetition')?.value||'Premier League';const rows=table(c);$('standingsTable').innerHTML=rows.length?rows.map(rowHtml).join(''):`<tr><td colspan="10" class="empty">No results published yet.</td></tr>`;}
-function fixtureHtml(f,admin=false){const [h,a]=teamsInFixture(f),s=score(f);return `<article class="fixture-card"><div class="fixture-meta"><span class="competition-pill">${esc(compOf(f))}</span><span>${dateText(f.date||f.kickoff)}</span><span>${esc(f.round||'Match')}</span></div><div class="fixture-teams"><div class="fixture-team">${logo(h)}<strong>${esc(h)}</strong></div><div class="fixture-score"><b>${s?`${s.h} - ${s.a}`:'VS'}</b><small>${s?'FULL TIME':'UPCOMING'}</small></div><div class="fixture-team">${logo(a)}<strong>${esc(a)}</strong></div></div>${admin?`<div class="fixture-admin-actions"><button class="mini-btn" onclick="editFixture('${f.id}')">Edit</button><button class="mini-btn danger" onclick="deleteFixture('${f.id}')">Delete</button></div>`:''}</article>`;}
-function renderFixtures(){
- let fs=state.fixtures.filter(f=>{const c=compOf(f);const [h,a]=teamsInFixture(f);return !!teamObjects(c).find(t=>t.name===h)&&!!teamObjects(c).find(t=>t.name===a);});
- const c=$('fixtureCompetition')?.value||'all',st=$('fixtureStatus')?.value||'all';
- if(c!=='all')fs=fs.filter(f=>compOf(f)===c);
- if(st==='upcoming')fs=fs.filter(f=>!score(f));
- if(st==='played')fs=fs.filter(f=>!!score(f));
- fs.sort((a,b)=>{
-   const ra=parseInt(String(a.round||'').match(/\d+/)?.[0]||'9999',10);
-   const rb=parseInt(String(b.round||'').match(/\d+/)?.[0]||'9999',10);
-   return ra-rb || (dateObj(a.date||a.kickoff)||0)-(dateObj(b.date||b.kickoff)||0);
- });
- const competitions=new Map();
- fs.forEach(f=>{
-   const comp=compOf(f), round=f.round||'Matchday';
-   if(!competitions.has(comp))competitions.set(comp,new Map());
-   const days=competitions.get(comp);
-   if(!days.has(round))days.set(round,[]);
-   days.get(round).push(f);
- });
- const compOrder=[...MAJOR_LEAGUES,'Championship','UCL'];
- const ordered=[...competitions.entries()].sort((a,b)=>{
-   const ia=compOrder.indexOf(a[0]), ib=compOrder.indexOf(b[0]);
-   return (ia<0?999:ia)-(ib<0?999:ib);
- });
- $('fixturesList').innerHTML=ordered.length?ordered.map(([comp,days])=>{
-   const orderedDays=[...days.entries()].sort((a,b)=>{
-     const ra=parseInt(String(a[0]).match(/\d+/)?.[0]||'9999',10);
-     const rb=parseInt(String(b[0]).match(/\d+/)?.[0]||'9999',10);
-     return ra-rb;
-   });
-   return `<section class="competition-fixtures-block"><div class="competition-fixtures-heading"><span>COMPETITION</span><h2>${esc(comp)}</h2></div>${orderedDays.map(([round,games])=>`<div class="matchday-block"><div class="matchday-title"><h3>${esc(round)}</h3><span>${games.length} match${games.length===1?'':'es'}</span></div><div class="matchday-row" style="--match-count:${games.length}">${games.map(f=>fixtureHtml(f)).join('')}</div></div>`).join('')}</section>`;
- }).join(''):`<div class="empty-block">No fixtures found.</div>`;
-}
-function renderTeams(){const q=($('teamSearch')?.value||'').toLowerCase(),c=$('teamCompetition')?.value||'all';let ts=teamObjects().filter(t=>!q||t.name.toLowerCase().includes(q));if(c!=='all')ts=ts.filter(t=>teamCompetitions(t).includes(c));$('teamsGrid').innerHTML=ts.map(t=>`<article class="team-card"><div class="team-logo-wrap">${logo(t.name)}</div><div><h3>${esc(t.name)}</h3><p>${esc(t.competition||'Competition TBA')}</p></div><span class="status-dot ${t.enabled===false?'off':''}">${t.enabled===false?'Disabled':'Available'}</span></article>`).join('')||`<div class="empty-block">No teams found.</div>`;}
-function renderPlayers(){const ps=state.players.slice().sort((a,b)=>String(a.name).localeCompare(String(b.name)));$('playersGrid').innerHTML=ps.length?ps.map(p=>`<article class="player-card"><div class="player-avatar">${esc(initials(p.name))}</div><div><h3>${esc(p.name)}</h3><p>${esc(p.club||'Club TBA')}</p><small>${esc(p.competition||'')} • ${esc(state.season?.name||DEFAULT_SEASON)}</small></div></article>`).join(''):`<div class="empty-block">No player registrations yet.</div>`;}
-function renderHall(){const hs=state.hall.slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));$('hallGrid').innerHTML=hs.length?hs.map(h=>`<article class="hall-card"><div class="trophy">🏆</div><span>${esc(h.season||h.seasonName||DEFAULT_SEASON)}</span><h2>${esc(h.winner||h.team||'Champion')}</h2><p>${esc(h.competition||'Competition')} ${h.date?'• '+esc(h.date):''}</p></article>`).join(''):`<div class="empty-block">No champions published yet.</div>`;}
-function renderNews(){
- const ns=state.news.slice().sort((a,b)=>String(b.date||b.createdAt||'').localeCompare(String(a.date||a.createdAt||'')));
- if(!ns.length){$('newsGrid').innerHTML='<div class="news-empty"><div class="news-empty-icon">✦</div><h3>No news published yet</h3><p>The latest league announcements will appear here.</p></div>';return;}
- const featured=ns[0], rest=ns.slice(1);
- const fmtDate=n=>{const d=n.date?new Date(n.date+'T00:00:00'):null;return d&&!isNaN(d)?d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}):(n.date||dateText(n.createdAt)||'LATEST');};
- const category=n=>n.category||n.competition||'League Update';
- const excerpt=(n,max=190)=>{const x=String(n.body||n.content||'');return x.length>max?x.slice(0,max).trim()+'…':x;};
- const card=n=>`<article class="news-modern-card"><div class="news-card-top"><span class="news-category">${esc(category(n))}</span><span class="news-date">${esc(fmtDate(n))}</span></div><div class="news-card-icon">⚽</div><h3>${esc(n.title||'League Update')}</h3><p>${esc(excerpt(n))}</p><div class="news-card-foot"><span>Gosper Global eFootball League</span><b>→</b></div></article>`;
- $('newsGrid').innerHTML=`<div class="news-ticker"><span class="ticker-label">LATEST</span><div class="ticker-text">${esc(featured.title||'League Update')}</div><span class="ticker-date">${esc(fmtDate(featured))}</span></div><article class="news-featured"><div class="news-featured-glow"></div><div class="news-featured-content"><div class="news-featured-meta"><span class="news-category bright">${esc(category(featured))}</span><span>${esc(fmtDate(featured))}</span></div><h2>${esc(featured.title||'League Update')}</h2><p>${esc(excerpt(featured,320))}</p><div class="news-featured-foot"><span>OFFICIAL LEAGUE ANNOUNCEMENT</span><span class="news-arrow">↗</span></div></div><div class="news-featured-mark">GG</div></article><div class="news-feed-head"><div><p class="eyebrow">LATEST STORIES</p><h2>From the League</h2></div><span>${ns.length} ${ns.length===1?'update':'updates'}</span></div><div class="news-feed">${rest.length?rest.map(card).join(''): '<div class="news-single-note">That’s the latest update. New announcements will appear here.</div>'}</div>`;
-}
-function renderDashboard(){
- const pl=table('Premier League');
- $('dashTable').innerHTML=pl.slice(0,6).map(rowHtml).join('')||`<tr><td colspan="10" class="empty">No standings yet.</td></tr>`;
- const up=state.fixtures.filter(f=>!score(f));
- const grouped=new Map();
- up.forEach(f=>{const comp=compOf(f),round=f.round||'Matchday';if(!grouped.has(comp))grouped.set(comp,new Map());const days=grouped.get(comp);if(!days.has(round))days.set(round,[]);days.get(round).push(f);});
- const compOrder=[...MAJOR_LEAGUES,'Championship','UCL'];
- const ordered=[...grouped.entries()].sort((a,b)=>(compOrder.indexOf(a[0])<0?999:compOrder.indexOf(a[0]))-(compOrder.indexOf(b[0])<0?999:compOrder.indexOf(b[0])));
- $('dashMatches').innerHTML=ordered.length?ordered.map(([comp,days])=>{
-   const rounds=[...days.entries()].sort((a,b)=>(parseInt(String(a[0]).match(/\d+/)?.[0]||9999,10)-parseInt(String(b[0]).match(/\d+/)?.[0]||9999,10)));
-   return `<section class="dashboard-fixture-competition"><div class="dashboard-fixture-heading"><span>COMPETITION</span><h3>${esc(comp)}</h3></div>${rounds.map(([round,games])=>`<div class="dashboard-fixture-matchday"><div class="dashboard-matchday-title"><b>${esc(round)}</b><span>${games.length} match${games.length===1?'':'es'}</span></div><div class="dashboard-fixture-games">${games.map(fixtureHtml).join('')}</div></div>`).join('')}</section>`;
- }).join(''):`<div class="empty-block">No fixtures published yet.</div>`;
- $('dashPlayers').textContent=state.players.length;$('dashFixtures').textContent=state.fixtures.length;$('dashPlayed').textContent=state.fixtures.filter(f=>score(f)).length;$('dashTeams').textContent=teamObjects().length;
-}
-function renderAll(){renderDashboard();renderTeams();renderFixtures();renderStandings();renderPlayers();renderHall();renderNews();renderAwards();renderComments();$('sideSeason').textContent=$('topSeason').textContent=$('footerSeason').textContent=state.season?.name||DEFAULT_SEASON;$('seasonStatus').textContent=state.season?.status||'Ongoing';}
-function showCompetition(c){const teams=activeTeams(c);$('competitionDetail').innerHTML=`<div class="panel-head"><div><span class="eyebrow">${esc(c)}</span><h2>${esc(c)} Control</h2></div><button class="primary" id="detailRegister">Register Player</button></div><div class="detail-grid"><div><b>${teams.length}</b><span>Available teams</span></div><div><b>${state.fixtures.filter(f=>compOf(f)===c).length}</b><span>Fixtures</span></div><div><b>${state.players.filter(p=>p.competition===c).length}</b><span>Players</span></div></div><div class="mini-team-list">${teams.slice(0,12).map(t=>`<span>${logo(t.name,true)}${esc(t.name)}</span>`).join('')}</div>`;$('detailRegister').onclick=()=>{openRegister();$('competition').value=c;populateClubPicker('');};}
-function searchSite(e){const q=(e.target?.value||e||'').trim().toLowerCase();if(!q)return;const t=teamObjects().find(x=>x.name.toLowerCase().includes(q));const p=state.players.find(x=>String(x.name).toLowerCase().includes(q)||String(x.playerId).toLowerCase().includes(q));const f=state.fixtures.find(x=>teamsInFixture(x).some(n=>n.toLowerCase().includes(q)));if(t)go('teams');else if(p)go('players');else if(f)go('fixtures');}
-
-
-function renderComments(){
- const cs=state.comments.slice().sort((a,b)=>(dateObj(b.createdAt)||0)-(dateObj(a.createdAt)||0));
- $('commentCount').textContent=`${cs.length} ${cs.length===1?'message':'messages'}`;
- $('commentsList').innerHTML=cs.length?cs.map(c=>`<article class="comment-card"><div class="comment-avatar">${esc(initials(c.name||'Guest'))}</div><div class="comment-body"><div class="comment-meta"><b>${esc(c.name||'Guest')}</b><span>${esc(dateText(c.createdAt)||'Just now')}</span></div><p>${esc(c.text)}</p></div></article>`).join(''):'<div class="empty-block">No messages yet. Start the conversation.</div>';
-}
-$('commentForm')?.addEventListener('submit',async e=>{
- e.preventDefault();
- const name=$('commentName').value.trim(), text=$('commentText').value.trim(), msg=$('commentMsg');
- if(!name||!text)return;
- if(!(await ensureAnon())){msg.className='form-msg error';msg.textContent='Chat is temporarily unavailable.';return;}
- const btn=e.target.querySelector('button');btn.disabled=true;msg.className='form-msg';msg.textContent='Posting…';
- try{await db.collection('comments').add({name:name.slice(0,40),text:text.slice(0,500),uid:auth.currentUser.uid,seasonId:SEASON_ID,createdAt:firebase.firestore.FieldValue.serverTimestamp()});$('commentText').value='';msg.className='form-msg ok';msg.textContent='Posted.';await loadData();}catch(err){console.error(err);msg.className='form-msg error';msg.textContent='Could not post comment.';}finally{btn.disabled=false;}
-});
-function deleteComment(id){if(!state.admin)return;if(!confirm('Delete this community message?'))return;db.collection('comments').doc(id).delete().then(()=>loadData());}
-window.deleteComment=deleteComment;
 
 // ---------- Admin ----------
 $('adminLoginBtn')?.addEventListener('click',openAdminLogin);$('adminLoginBtn2')?.addEventListener('click',openAdminLogin);
@@ -281,7 +194,7 @@ async function adminDelete(collection,id){if(!confirm('Delete this item?'))retur
 function renderAdmin(){
  const a=$('adminArea');
  if(!state.admin){a.innerHTML=`<div class="admin-lock"><div class="lock-icon">⚙</div><h2>Admin access required</h2><p>Sign in with your Firebase administrator account.</p><button class="primary" id="adminLoginBtn2">Sign in to Control Center</button></div>`;$('adminLoginBtn2').onclick=openAdminLogin;return;}
- a.innerHTML=`<div class="admin-shell"><div class="admin-nav"><button class="admin-tab active" data-admin-tab="overview">Overview</button><button class="admin-tab" data-admin-tab="competitions">Competitions</button><button class="admin-tab" data-admin-tab="teams">Teams</button><button class="admin-tab" data-admin-tab="fixtures">Fixtures</button><button class="admin-tab" data-admin-tab="ucl">UCL Groups</button><button class="admin-tab" data-admin-tab="results">Results</button><button class="admin-tab" data-admin-tab="members">Members</button><button class="admin-tab" data-admin-tab="promotion">Promotion / Relegation</button><button class="admin-tab" data-admin-tab="news">News</button><button class="admin-tab" data-admin-tab="hall">Hall of Fame</button><button class="admin-tab" data-admin-tab="season">Season</button><button class="ghost" id="adminSignOut">Sign out</button></div><div id="adminContent"></div></div>`;
+ a.innerHTML=`<div class="admin-shell"><div class="admin-nav"><button class="admin-tab active" data-admin-tab="overview">Overview</button><button class="admin-tab" data-admin-tab="competitions">Competitions</button><button class="admin-tab" data-admin-tab="teams">Teams</button><button class="admin-tab" data-admin-tab="fixtures">Fixtures</button><button class="admin-tab" data-admin-tab="ucl">UCL Groups</button><button class="admin-tab" data-admin-tab="results">Results</button><button class="admin-tab" data-admin-tab="members">Members</button><button class="admin-tab" data-admin-tab="promotion">Promotion / Relegation</button><button class="admin-tab" data-admin-tab="news">News</button><button class="admin-tab" data-admin-tab="hall">Hall of Fame</button><button class="admin-tab" data-admin-tab="awards">🏆 Awards</button><button class="admin-tab" data-admin-tab="community">💬 Community</button><button class="admin-tab" data-admin-tab="season">Season</button><button class="ghost" id="adminSignOut">Sign out</button></div><div id="adminContent"></div></div>`;
  document.querySelectorAll('.admin-tab').forEach(b=>b.onclick=()=>adminTab(b.dataset.adminTab));$('adminSignOut').onclick=()=>auth.signOut().then(()=>{state.admin=false;renderAdmin();});adminTab('overview');
 }
 function adminTab(tab){
@@ -454,14 +367,14 @@ function adminAwards(c){
   <select id="awardCategory">${categories.map(x=>`<option>${x}</option>`).join('')}</select>
   <select id="awardCompetition"><option>GLOBAL</option>${[...MAJOR_LEAGUES,'Championship','UCL'].map(x=>`<option>${x}</option>`).join('')}</select>
   <input id="awardWinner" placeholder="Winner / announced player">
-  <input id="awardNominees" placeholder="Player of Tournament nominees — 3 names separated by commas">
-  <input id="awardTop8" placeholder="Ballon d'Or Top 8 — 8 names separated by commas">
+  <input id="awardNominees" placeholder="Player of Tournament: exactly 3 names, separated by commas">
+  <input id="awardTop8" placeholder="Ballon d'Or Top 8: 8 names, separated by commas">
   <input id="awardSeason" value="${esc(state.season?.name||DEFAULT_SEASON)}" placeholder="Season">
   <button class="primary" id="saveAward">Publish / Update Award</button>
  </div>
  <div class="admin-list">${current.map(a=>`<article class="admin-item"><div><b>${esc(a.category)} • ${esc(a.competition||'GLOBAL')}</b><span>${esc(a.winner||'Winner not announced')}</span></div><p>${a.category==='Player of the Tournament'?`Nominees: ${esc((a.nominees||[]).join(', '))}`:''}${a.category==="Ballon d'Or"&&a.top8?.length?`Top 8: ${esc(a.top8.join(', '))}`:''}</p><button class="mini-btn danger" onclick="deleteAward('${a.id}')">Delete</button></article>`).join('')||'<p class="muted">No awards published yet.</p>'}</div>`;
  $('saveAward').onclick=async()=>{
-   const category=$('awardCategory').value, comp=$('awardCompetition').value;
+   const category=$('awardCategory').value, comp=(['Ballon d\'Or','European Top Scorer','European Best Defender'].includes(category)?'GLOBAL':$('awardCompetition').value);
    const nominees=$('awardNominees').value.split(',').map(x=>x.trim()).filter(Boolean).slice(0,3);
    const top8=$('awardTop8').value.split(',').map(x=>x.trim()).filter(Boolean).slice(0,8);
    if(category==='Player of the Tournament' && nominees.length!==3){alert('Enter exactly 3 nominees for Player of the Tournament.');return;}
