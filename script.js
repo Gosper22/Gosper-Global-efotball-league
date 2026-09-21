@@ -189,35 +189,6 @@ function awardBy(category,competition='GLOBAL'){const id=awardKey(category,compe
 function safeText(v){return esc(v||'');}
 function realisticBallonSvg(){return `<svg class="ballon-real" viewBox="0 0 260 300" aria-label="Ballon d'Or trophy"><defs><radialGradient id="br1"><stop stop-color="#fff7c4"/><stop offset=".35" stop-color="#e8c24b"/><stop offset=".72" stop-color="#9c6d13"/><stop offset="1" stop-color="#4b3108"/></radialGradient><linearGradient id="br2" x1="0" x2="1"><stop stop-color="#fff8cf"/><stop offset=".45" stop-color="#d7a72e"/><stop offset="1" stop-color="#76500b"/></linearGradient><filter id="brShadow"><feDropShadow dx="0" dy="7" stdDeviation="5" flood-opacity=".45"/></filter></defs><ellipse cx="130" cy="268" rx="72" ry="13" fill="#000" opacity=".35"/><path d="M103 211 L157 211 L170 254 L90 254 Z" fill="url(#br2)" stroke="#ffe995" stroke-width="3" filter="url(#brShadow)"/><path d="M76 247 Q130 229 184 247 L177 264 Q130 278 83 264Z" fill="#b7831d" stroke="#ffeaa0" stroke-width="3"/><g filter="url(#brShadow)"><circle cx="130" cy="112" r="78" fill="url(#br1)" stroke="#fff0a2" stroke-width="4"/><path d="M62 112 Q130 42 198 112 Q130 92 62 112Z" fill="#fff4b2" opacity=".2"/><path d="M69 143 Q130 186 191 143" fill="none" stroke="#80570c" stroke-width="5" opacity=".55"/><path d="M80 78 Q130 130 180 78 M66 99 Q130 153 194 99 M76 131 Q130 165 184 131" fill="none" stroke="#6e4b0b" stroke-width="3" opacity=".45"/><circle cx="106" cy="82" r="13" fill="#fff9d8" opacity=".55"/></g><path d="M116 186 L144 186 L150 215 L110 215Z" fill="url(#br2)"/><circle cx="130" cy="221" r="7" fill="#fff0a2"/></svg>`;}
 function awardArt(category){const c=String(category).toLowerCase();if(c.includes('ballon'))return realisticBallonSvg();if(c.includes('top scorer'))return `<svg class="award-svg" viewBox="0 0 160 180"><path d="M45 42h70v70H45z" fill="#d6a52a"/><path d="M58 112h44l8 27H50z" fill="#9b7117"/><path d="M35 42h-18c0 28 15 43 28 43M125 42h18c0 28-15 43-28 43" fill="none" stroke="#e6bd4a" stroke-width="9"/><path d="M55 42l50 70" stroke="#fff3af" stroke-width="7" opacity=".55"/><rect x="38" y="139" width="84" height="12" rx="6" fill="#6d4b0a"/></svg>`;if(c.includes('defender'))return `<svg class="award-svg" viewBox="0 0 160 180"><path d="M80 15l58 22v53c0 38-26 61-58 77-32-16-58-39-58-77V37z" fill="#6f9b3b" stroke="#dff3a6" stroke-width="5"/><path d="M80 46l9 22 24 2-18 15 6 24-21-13-21 13 6-24-18-15 24-2z" fill="#17230d"/></svg>`;if(c.includes('player of the tournament'))return `<svg class="award-svg" viewBox="0 0 160 180"><circle cx="80" cy="52" r="27" fill="#d9aa2f"/><path d="M38 145q7-55 42-55t42 55z" fill="#b78118"/><circle cx="80" cy="52" r="12" fill="#fff2a7" opacity=".6"/><path d="M47 150h66" stroke="#fff1a4" stroke-width="8"/></svg>`;return `<svg class="award-svg" viewBox="0 0 160 180"><path d="M80 12l15 48h51l-41 30 16 49-41-30-41 30 16-49-41-30h51z" fill="#d3a22a" stroke="#fff1a3" stroke-width="4"/></svg>`;}
-function fixtureScorerEntries(f){
-  const norm=v=>Array.isArray(v)?v:[];
-  return {home:norm(f.homeScorers),away:norm(f.awayScorers)};
-}
-function normalizeScorerName(v){return String(v||'').trim().replace(/\s+/g,' ');}
-function parseScorers(text){
-  return String(text||'').split(/[,\n]+/).map(x=>x.trim()).filter(Boolean).map(part=>{
-    let m=part.match(/^(.*?)\s*(?:x|×|:|-)\s*(\d+)$/i);
-    const player=normalizeScorerName(m?m[1]:part), goals=m?Math.max(1,Number(m[2])):1;
-    return player?{player,goals}:null;
-  }).filter(Boolean);
-}
-function scorerText(list){return (Array.isArray(list)?list:[]).map(x=>`${x.player||x.name||''}${Number(x.goals||1)>1?' x'+Number(x.goals||1):''}`).filter(x=>x.trim()).join(', ');}
-function validateScorersForClub(list,club){
-  const bad=(list||[]).filter(x=>{const p=state.players.find(q=>q.seasonId===SEASON_ID&&q.status!=='cancelled'&&String(q.name||'').trim().toLowerCase()===String(x.player||'').trim().toLowerCase());return !p||String(p.club||'').trim().toLowerCase()!==String(club||'').trim().toLowerCase();});
-  return bad.map(x=>x.player);
-}
-function aggregateScorers(comps=AWARD_COMPETITIONS){
-  const map=new Map();
-  state.fixtures.filter(f=>comps.includes(compOf(f))&&score(f)).forEach(f=>{
-    const {home,away}=fixtureScorerEntries(f), [ht,at]=teamsInFixture(f);
-    [...home.map(x=>({...x,club:ht,competition:compOf(f)})),...away.map(x=>({...x,club:at,competition:compOf(f)}))].forEach(x=>{
-      const name=normalizeScorerName(x.player||x.name); const goals=Math.max(1,Number(x.goals||1)); if(!name)return;
-      const key=name.toLowerCase(); const row=map.get(key)||{player:name,goals:0,clubs:new Set(),competitions:new Set()};
-      row.goals+=goals; row.clubs.add(x.club); row.competitions.add(x.competition); map.set(key,row);
-    });
-  });
-  return [...map.values()];
-}
 function registeredPlayerByName(name){
   return state.players.find(p=>p.seasonId===SEASON_ID&&p.status!=='cancelled'&&String(p.name||'').trim().toLowerCase()===String(name||'').trim().toLowerCase());
 }
@@ -633,19 +604,13 @@ async function saveFixtureResult(id){
   if(!state.admin){alert('Admin access required.');return;}
   const fixture=state.fixtures.find(f=>f.id===id);
   if(!fixture){alert('Fixture not found.');return;}
-  const hEl=$('homeScore-'+id), aEl=$('awayScore-'+id), hsEl=$('homeScorers-'+id), asEl=$('awayScorers-'+id);
+  const hEl=$('homeScore-'+id), aEl=$('awayScore-'+id);
   const hv=hEl?.value.trim(), av=aEl?.value.trim();
   if(hv===''||av===''||!/^[0-9]+$/.test(hv)||!/^[0-9]+$/.test(av)){alert('Enter valid whole-number scores for both teams.');return;}
-  const homeScorers=parseScorers(hsEl?.value||''), awayScorers=parseScorers(asEl?.value||'');
-  const homeGoals=homeScorers.reduce((n,x)=>n+x.goals,0), awayGoals=awayScorers.reduce((n,x)=>n+x.goals,0);
-  if(homeGoals!==Number(hv)||awayGoals!==Number(av)){alert(`Scorer totals must match the score. ${hv} home goal(s) and ${av} away goal(s) required.`);return;}
-  const [homeTeam,awayTeam]=teamsInFixture(fixture);
-  const badHome=validateScorersForClub(homeScorers,homeTeam), badAway=validateScorersForClub(awayScorers,awayTeam);
-  if(badHome.length||badAway.length){alert(`Every scorer must be a registered player of the correct club. Check: ${[...badHome,...badAway].join(', ')}`);return;}
   const btn=hEl?.parentElement?.querySelector('button');
   if(btn){btn.disabled=true;btn.textContent='Saving…';}
   try{
-    await db.collection('fixtures').doc(id).set({homeScore:Number(hv),awayScore:Number(av),homeScorers,awayScorers,resultStatus:'completed',resultUpdatedAt:firebase.firestore.FieldValue.serverTimestamp(),updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+    await db.collection('fixtures').doc(id).set({homeScore:Number(hv),awayScore:Number(av),resultStatus:'completed',resultUpdatedAt:firebase.firestore.FieldValue.serverTimestamp(),updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
     await loadData();
     adminTab('results');
     alert('Result saved successfully.');
@@ -661,7 +626,7 @@ async function clearFixtureResult(id){
   if(!state.admin)return;
   if(!confirm('Clear this result?'))return;
   try{
-    await db.collection('fixtures').doc(id).update({homeScore:firebase.firestore.FieldValue.delete(),awayScore:firebase.firestore.FieldValue.delete(),homeScorers:firebase.firestore.FieldValue.delete(),awayScorers:firebase.firestore.FieldValue.delete(),resultStatus:firebase.firestore.FieldValue.delete(),resultUpdatedAt:firebase.firestore.FieldValue.delete(),updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
+    await db.collection('fixtures').doc(id).update({homeScore:firebase.firestore.FieldValue.delete(),awayScore:firebase.firestore.FieldValue.delete(),resultStatus:firebase.firestore.FieldValue.delete(),resultUpdatedAt:firebase.firestore.FieldValue.delete(),updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
     await loadData();
     adminTab('results');
   }catch(e){
@@ -672,6 +637,6 @@ async function clearFixtureResult(id){
 window.clearFixtureResult=clearFixtureResult;
 
 function resultFixtureHtml(f){
- const [h,a]=teamsInFixture(f),sc=score(f),ss=fixtureScorerEntries(f);
- return `<article class="admin-item"><div><b>${esc(h)} vs ${esc(a)}</b><span>${esc(compOf(f))} • ${esc(f.round||'Matchday')} • ${esc(dateText(f.date||f.kickoff))}</span></div><div class="admin-result-form"><input type="number" min="0" id="homeScore-${f.id}" value="${sc?sc.h:''}" placeholder="Home"><strong>-</strong><input type="number" min="0" id="awayScore-${f.id}" value="${sc?sc.a:''}" placeholder="Away"><input id="homeScorers-${f.id}" value="${esc(scorerText(ss.home))}" placeholder="${esc(h)} scorers: Player x2, Player"><input id="awayScorers-${f.id}" value="${esc(scorerText(ss.away))}" placeholder="${esc(a)} scorers: Player x2, Player"><small class="muted">Enter scorer names exactly as registered. Use <b>x2</b> for two goals. Scorer totals must equal the score.</small><button class="mini-btn" onclick="saveFixtureResult('${f.id}')">Save Result</button>${sc?`<button class="mini-btn danger" onclick="clearFixtureResult('${f.id}')">Clear</button>`:''}</div></article>`;
+ const [h,a]=teamsInFixture(f),sc=score(f);
+ return `<article class="admin-item"><div><b>${esc(h)} vs ${esc(a)}</b><span>${esc(compOf(f))} • ${esc(f.round||'Matchday')} • ${esc(dateText(f.date||f.kickoff))}</span></div><div class="admin-result-form"><input type="number" min="0" id="homeScore-${f.id}" value="${sc?sc.h:''}" placeholder="Home"><strong>-</strong><input type="number" min="0" id="awayScore-${f.id}" value="${sc?sc.a:''}" placeholder="Away"><button class="mini-btn" onclick="saveFixtureResult('${f.id}')">Save Result</button>${sc?`<button class="mini-btn danger" onclick="clearFixtureResult('${f.id}')">Clear</button>`:''}</div></article>`;
 }
