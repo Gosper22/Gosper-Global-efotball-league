@@ -182,7 +182,7 @@ function renderDashboard(){
 }
 
 // ---------------- AWARDS + COMMUNITY (additive; existing league logic remains untouched) ----------------
-const AWARD_COMPETITIONS=[...new Set([...(typeof catalog!=='undefined'?catalog.map(x=>x[1]):[]),'Premier League','LaLiga','Serie A','Bundesliga','Championship','UCL'])];
+const AWARD_COMPETITIONS=['Premier League','LaLiga','Serie A','Bundesliga','Championship','UCL'];
 const GLOBAL_AWARDS=["Ballon d'Or","European Top Scorer","European Best Defender"];
 function awardKey(category,competition='GLOBAL'){return `${SEASON_ID}__${competition}__${category}`.replace(/[^a-zA-Z0-9_-]/g,'_');}
 function awardBy(category,competition='GLOBAL'){const id=awardKey(category,competition);return state.awards.find(a=>a.id===id)||state.awards.find(a=>a.category===category&&a.competition===competition);}
@@ -197,12 +197,12 @@ function registeredPlayersForCompetition(comp){
 }
 function awardAutoWinner(category, competition){
   if(category==='Top Scorer'){
-    // In this league one registered player represents one club. Therefore the
-    // club's GF is the player's tournament goals. This also works with older
-    // results that were saved before scorer fields were introduced.
-    const rows=table(competition).filter(r=>r.mp>0), registered=registeredPlayersForCompetition(competition);
-    const candidates=registered.map(p=>{const r=rows.find(x=>String(x.team).trim().toLowerCase()===String(p.club||'').trim().toLowerCase());return r?{player:p.name,club:r.team,goals:r.gf,mp:r.mp}:null}).filter(Boolean);
-    return candidates.sort((a,b)=>b.goals-a.goals||b.mp-a.mp||a.player.localeCompare(b.player))[0]||null;
+    const registered=registeredPlayersForCompetition(competition), rows=table(competition).filter(r=>r.mp>0);
+    const candidates=registered.map(p=>{
+      const r=rows.find(x=>String(x.team).trim().toLowerCase()===String(p.club||'').trim().toLowerCase());
+      return r?{player:p.name,club:r.team,goals:r.gf}:null;
+    }).filter(Boolean);
+    return candidates.sort((a,b)=>b.goals-a.goals||a.player.localeCompare(b.player))[0]||null;
   }
   if(category==='Best Defender'){
     const rows=table(competition).filter(r=>r.mp>0), registered=registeredPlayersForCompetition(competition);
@@ -213,17 +213,12 @@ function awardAutoWinner(category, competition){
 }
 function globalAutoWinner(category){
   if(category==='European Top Scorer'){
-    // Sum the registered player's club GF across every domestic league plus UCL.
     const registered=state.players.filter(p=>p.seasonId===SEASON_ID&&p.status!=='cancelled');
-    const map=new Map();
-    AWARD_COMPETITIONS.forEach(comp=>{
-      table(comp).filter(r=>r.mp>0).forEach(r=>{
-        const key=String(r.team).trim().toLowerCase();
-        const row=map.get(key)||{gf:0,played:false};
-        row.gf+=r.gf; row.played=true; map.set(key,row);
-      });
-    });
-    const candidates=registered.map(p=>{const row=map.get(String(p.club||'').trim().toLowerCase());return row&&row.played?{player:p.name,club:p.club,goals:row.gf}:null;}).filter(Boolean);
+    const candidates=[];
+    AWARD_COMPETITIONS.forEach(comp=>table(comp).filter(r=>r.mp>0).forEach(r=>{
+      registered.filter(p=>String(p.competition)===String(comp)&&String(p.club||'').trim().toLowerCase()===String(r.team||'').trim().toLowerCase())
+        .forEach(p=>candidates.push({player:p.name,club:r.team,goals:r.gf}));
+    }));
     return candidates.sort((a,b)=>b.goals-a.goals||a.player.localeCompare(b.player))[0]||null;
   }
   if(category==='European Best Defender'){
@@ -296,7 +291,7 @@ function renderAwards(){
         const status=cat==='Player of the Tournament'
           ? (winner?`Winner by public vote • ${totalVotes} total vote${totalVotes===1?'':'s'}`:'Voting open • '+totalVotes+' vote'+(totalVotes===1?'':'s'))
           : cat==='Top Scorer'
-            ? `AUTO • ${auto?.goals||0} goal${auto?.goals===1?'':'s'} • ${auto?.mp||0} match${auto?.mp===1?'':'es'}`
+            ? `Auto-calculated • ${auto?.goals||0} goal${auto?.goals===1?'':'s'}`
             : `Auto-calculated • ${auto?.ga||0} goals conceded`;
         return `<article class="award-card">
           <div class="award-card-art ${player?.club?'has-club-logo':''}">
@@ -317,7 +312,7 @@ function renderAwards(){
   if($('globalAwardsGrid'))$('globalAwardsGrid').innerHTML=GLOBAL_AWARDS.filter(x=>x!=="Ballon d'Or").map(cat=>{
     const a=displayAward(cat),winner=awardWinnerFor(a),player=awardPlayer(cat),auto=globalAutoWinner(cat);
     const detail=winner
-      ? `AUTO • ${cat==='European Top Scorer'?auto?.goals||0:auto?.ga||0} ${cat==='European Top Scorer'?'goals':'goals conceded'} across all leagues + UCL`
+      ? `Auto-calculated • ${cat==='European Top Scorer'?auto?.goals||0:auto?.ga||0} ${cat==='European Top Scorer'?'goals':'goals conceded'} across all leagues + UCL`
       : 'Auto-calculated from published results';
     return `<article class="global-award-card">
       <div class="global-award-art">${awardLogo(cat)}</div>
@@ -370,9 +365,9 @@ function adminAwards(c){
    } else {
      const calc=comp==='GLOBAL'?globalAutoWinner(category):awardAutoWinner(category,comp);
      let detail='No completed results yet.';
-     if(category==='Top Scorer') detail=calc?`${calc.player} — ${calc.goals} goals`:'No recorded scorers yet';
+     if(category==='Top Scorer') detail=calc?`${calc.player} — ${calc.goals} goals`:'No completed results yet.';
      if(category==='Best Defender') detail=calc?`${calc.player} — ${calc.ga} goals conceded`:'No completed results yet';
-     if(category==='European Top Scorer') detail=calc?`${calc.player} — ${calc.goals} goals across all leagues + UCL`:'No recorded scorers yet';
+     if(category==='European Top Scorer') detail=calc?`${calc.player} — ${calc.goals} goals across all leagues + UCL`:'No completed results yet.';
      if(category==='European Best Defender') detail=calc?`${calc.player} — ${calc.ga} total goals conceded across all leagues + UCL`:'No completed results yet';
      auto.innerHTML=`<b>⚡ AUTOMATIC AWARD</b><p class="auto-award-value">${safeText(detail)}</p><small>Updates automatically when a published result changes. There is nothing to save here.</small>`;
    }
@@ -606,11 +601,18 @@ async function saveFixtureResult(id){
   if(!fixture){alert('Fixture not found.');return;}
   const hEl=$('homeScore-'+id), aEl=$('awayScore-'+id);
   const hv=hEl?.value.trim(), av=aEl?.value.trim();
-  if(hv===''||av===''||!/^[0-9]+$/.test(hv)||!/^[0-9]+$/.test(av)){alert('Enter valid whole-number scores for both teams.');return;}
+  if(hv===''||av===''||!/^[0-9]+$/.test(hv)||!/^[0-9]+$/.test(av)){
+    alert('Enter valid whole-number scores for both teams.');return;
+  }
   const btn=hEl?.parentElement?.querySelector('button');
   if(btn){btn.disabled=true;btn.textContent='Saving…';}
   try{
-    await db.collection('fixtures').doc(id).set({homeScore:Number(hv),awayScore:Number(av),resultStatus:'completed',resultUpdatedAt:firebase.firestore.FieldValue.serverTimestamp(),updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+    await db.collection('fixtures').doc(id).set({
+      homeScore:Number(hv),awayScore:Number(av),
+      resultStatus:'completed',
+      resultUpdatedAt:firebase.firestore.FieldValue.serverTimestamp(),
+      updatedAt:firebase.firestore.FieldValue.serverTimestamp()
+    },{merge:true});
     await loadData();
     adminTab('results');
     alert('Result saved successfully.');
