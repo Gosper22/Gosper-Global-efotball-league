@@ -91,11 +91,9 @@ try{
   await db.runTransaction(async tx=>{
     const snap=await tx.get(ref);
     if(snap.exists) throw new Error('PLAYER_EXISTS');
-    const lockSnap=await tx.get(lockRef);
-    if(lockSnap.exists) throw new Error('TEAM_TAKEN');
 
-    tx.set(ref,{name,playerId:raw,playerIdKey:key,uid:auth.currentUser.uid,lockId:lockKey,competition,club,seasonId:SEASON_ID,status:'active',createdAt:firebase.firestore.FieldValue.serverTimestamp()});
-    tx.set(lockRef,{playerDocId,playerIdKey:key,uid:auth.currentUser.uid,competition,club,seasonId:SEASON_ID,status:'active',createdAt:firebase.firestore.FieldValue.serverTimestamp()});
+    tx.create(ref,{name,playerId:raw,playerIdKey:key,uid:auth.currentUser.uid,lockId:lockKey,competition,club,seasonId:SEASON_ID,status:'active',createdAt:firebase.firestore.FieldValue.serverTimestamp()});
+    tx.create(lockRef,{playerDocId,playerIdKey:key,uid:auth.currentUser.uid,competition,club,seasonId:SEASON_ID,status:'active',createdAt:firebase.firestore.FieldValue.serverTimestamp()});
   });
   m.className='form-msg ok';
   m.textContent=`Registration successful — ${club}`;
@@ -182,42 +180,13 @@ function renderDashboard(){
 }
 
 // ---------------- AWARDS + COMMUNITY (additive; existing league logic remains untouched) ----------------
-const AWARD_COMPETITIONS=[...new Set([...(typeof catalog!=='undefined'?catalog.map(x=>x[1]):[]),'Premier League','LaLiga','Serie A','Bundesliga','Championship','UCL'])];
+const AWARD_COMPETITIONS=['Premier League','LaLiga','Serie A','Bundesliga','Championship','UCL'];
 const GLOBAL_AWARDS=["Ballon d'Or","European Top Scorer","European Best Defender"];
 function awardKey(category,competition='GLOBAL'){return `${SEASON_ID}__${competition}__${category}`.replace(/[^a-zA-Z0-9_-]/g,'_');}
 function awardBy(category,competition='GLOBAL'){const id=awardKey(category,competition);return state.awards.find(a=>a.id===id)||state.awards.find(a=>a.category===category&&a.competition===competition);}
 function safeText(v){return esc(v||'');}
 function realisticBallonSvg(){return `<svg class="ballon-real" viewBox="0 0 260 300" aria-label="Ballon d'Or trophy"><defs><radialGradient id="br1"><stop stop-color="#fff7c4"/><stop offset=".35" stop-color="#e8c24b"/><stop offset=".72" stop-color="#9c6d13"/><stop offset="1" stop-color="#4b3108"/></radialGradient><linearGradient id="br2" x1="0" x2="1"><stop stop-color="#fff8cf"/><stop offset=".45" stop-color="#d7a72e"/><stop offset="1" stop-color="#76500b"/></linearGradient><filter id="brShadow"><feDropShadow dx="0" dy="7" stdDeviation="5" flood-opacity=".45"/></filter></defs><ellipse cx="130" cy="268" rx="72" ry="13" fill="#000" opacity=".35"/><path d="M103 211 L157 211 L170 254 L90 254 Z" fill="url(#br2)" stroke="#ffe995" stroke-width="3" filter="url(#brShadow)"/><path d="M76 247 Q130 229 184 247 L177 264 Q130 278 83 264Z" fill="#b7831d" stroke="#ffeaa0" stroke-width="3"/><g filter="url(#brShadow)"><circle cx="130" cy="112" r="78" fill="url(#br1)" stroke="#fff0a2" stroke-width="4"/><path d="M62 112 Q130 42 198 112 Q130 92 62 112Z" fill="#fff4b2" opacity=".2"/><path d="M69 143 Q130 186 191 143" fill="none" stroke="#80570c" stroke-width="5" opacity=".55"/><path d="M80 78 Q130 130 180 78 M66 99 Q130 153 194 99 M76 131 Q130 165 184 131" fill="none" stroke="#6e4b0b" stroke-width="3" opacity=".45"/><circle cx="106" cy="82" r="13" fill="#fff9d8" opacity=".55"/></g><path d="M116 186 L144 186 L150 215 L110 215Z" fill="url(#br2)"/><circle cx="130" cy="221" r="7" fill="#fff0a2"/></svg>`;}
 function awardArt(category){const c=String(category).toLowerCase();if(c.includes('ballon'))return realisticBallonSvg();if(c.includes('top scorer'))return `<svg class="award-svg" viewBox="0 0 160 180"><path d="M45 42h70v70H45z" fill="#d6a52a"/><path d="M58 112h44l8 27H50z" fill="#9b7117"/><path d="M35 42h-18c0 28 15 43 28 43M125 42h18c0 28-15 43-28 43" fill="none" stroke="#e6bd4a" stroke-width="9"/><path d="M55 42l50 70" stroke="#fff3af" stroke-width="7" opacity=".55"/><rect x="38" y="139" width="84" height="12" rx="6" fill="#6d4b0a"/></svg>`;if(c.includes('defender'))return `<svg class="award-svg" viewBox="0 0 160 180"><path d="M80 15l58 22v53c0 38-26 61-58 77-32-16-58-39-58-77V37z" fill="#6f9b3b" stroke="#dff3a6" stroke-width="5"/><path d="M80 46l9 22 24 2-18 15 6 24-21-13-21 13 6-24-18-15 24-2z" fill="#17230d"/></svg>`;if(c.includes('player of the tournament'))return `<svg class="award-svg" viewBox="0 0 160 180"><circle cx="80" cy="52" r="27" fill="#d9aa2f"/><path d="M38 145q7-55 42-55t42 55z" fill="#b78118"/><circle cx="80" cy="52" r="12" fill="#fff2a7" opacity=".6"/><path d="M47 150h66" stroke="#fff1a4" stroke-width="8"/></svg>`;return `<svg class="award-svg" viewBox="0 0 160 180"><path d="M80 12l15 48h51l-41 30 16 49-41-30-41 30 16-49-41-30h51z" fill="#d3a22a" stroke="#fff1a3" stroke-width="4"/></svg>`;}
-function fixtureScorerEntries(f){
-  const norm=v=>Array.isArray(v)?v:[];
-  return {home:norm(f.homeScorers),away:norm(f.awayScorers)};
-}
-function normalizeScorerName(v){return String(v||'').trim().replace(/\s+/g,' ');}
-function parseScorers(text){
-  return String(text||'').split(/[,\n]+/).map(x=>x.trim()).filter(Boolean).map(part=>{
-    let m=part.match(/^(.*?)\s*(?:x|×|:|-)\s*(\d+)$/i);
-    const player=normalizeScorerName(m?m[1]:part), goals=m?Math.max(1,Number(m[2])):1;
-    return player?{player,goals}:null;
-  }).filter(Boolean);
-}
-function scorerText(list){return (Array.isArray(list)?list:[]).map(x=>`${x.player||x.name||''}${Number(x.goals||1)>1?' x'+Number(x.goals||1):''}`).filter(x=>x.trim()).join(', ');}
-function validateScorersForClub(list,club){
-  const bad=(list||[]).filter(x=>{const p=state.players.find(q=>q.seasonId===SEASON_ID&&q.status!=='cancelled'&&String(q.name||'').trim().toLowerCase()===String(x.player||'').trim().toLowerCase());return !p||String(p.club||'').trim().toLowerCase()!==String(club||'').trim().toLowerCase();});
-  return bad.map(x=>x.player);
-}
-function aggregateScorers(comps=AWARD_COMPETITIONS){
-  const map=new Map();
-  state.fixtures.filter(f=>comps.includes(compOf(f))&&score(f)).forEach(f=>{
-    const {home,away}=fixtureScorerEntries(f), [ht,at]=teamsInFixture(f);
-    [...home.map(x=>({...x,club:ht,competition:compOf(f)})),...away.map(x=>({...x,club:at,competition:compOf(f)}))].forEach(x=>{
-      const name=normalizeScorerName(x.player||x.name); const goals=Math.max(1,Number(x.goals||1)); if(!name)return;
-      const key=name.toLowerCase(); const row=map.get(key)||{player:name,goals:0,clubs:new Set(),competitions:new Set()};
-      row.goals+=goals; row.clubs.add(x.club); row.competitions.add(x.competition); map.set(key,row);
-    });
-  });
-  return [...map.values()];
-}
 function registeredPlayerByName(name){
   return state.players.find(p=>p.seasonId===SEASON_ID&&p.status!=='cancelled'&&String(p.name||'').trim().toLowerCase()===String(name||'').trim().toLowerCase());
 }
@@ -226,12 +195,9 @@ function registeredPlayersForCompetition(comp){
 }
 function awardAutoWinner(category, competition){
   if(category==='Top Scorer'){
-    // In this league one registered player represents one club. Therefore the
-    // club's GF is the player's tournament goals. This also works with older
-    // results that were saved before scorer fields were introduced.
-    const rows=table(competition).filter(r=>r.mp>0), registered=registeredPlayersForCompetition(competition);
-    const candidates=registered.map(p=>{const r=rows.find(x=>String(x.team).trim().toLowerCase()===String(p.club||'').trim().toLowerCase());return r?{player:p.name,club:r.team,goals:r.gf,mp:r.mp}:null}).filter(Boolean);
-    return candidates.sort((a,b)=>b.goals-a.goals||b.mp-a.mp||a.player.localeCompare(b.player))[0]||null;
+    const registered=registeredPlayersForCompetition(competition), rows=table(competition).filter(r=>r.mp>0);
+    const candidates=registered.map(p=>{const r=rows.find(x=>String(x.team).toLowerCase()===String(p.club||'').toLowerCase());return r?{player:p.name,club:r.team,goals:r.gf}:null}).filter(Boolean);
+    return candidates.sort((a,b)=>b.goals-a.goals||a.player.localeCompare(b.player))[0]||null;
   }
   if(category==='Best Defender'){
     const rows=table(competition).filter(r=>r.mp>0), registered=registeredPlayersForCompetition(competition);
@@ -242,17 +208,9 @@ function awardAutoWinner(category, competition){
 }
 function globalAutoWinner(category){
   if(category==='European Top Scorer'){
-    // Sum the registered player's club GF across every domestic league plus UCL.
-    const registered=state.players.filter(p=>p.seasonId===SEASON_ID&&p.status!=='cancelled');
-    const map=new Map();
-    AWARD_COMPETITIONS.forEach(comp=>{
-      table(comp).filter(r=>r.mp>0).forEach(r=>{
-        const key=String(r.team).trim().toLowerCase();
-        const row=map.get(key)||{gf:0,played:false};
-        row.gf+=r.gf; row.played=true; map.set(key,row);
-      });
-    });
-    const candidates=registered.map(p=>{const row=map.get(String(p.club||'').trim().toLowerCase());return row&&row.played?{player:p.name,club:p.club,goals:row.gf}:null;}).filter(Boolean);
+    const registered=state.players.filter(p=>p.seasonId===SEASON_ID&&p.status!=='cancelled'), totals=new Map();
+    AWARD_COMPETITIONS.forEach(comp=>table(comp).filter(r=>r.mp>0).forEach(r=>totals.set(String(r.team).toLowerCase(),(totals.get(String(r.team).toLowerCase())||0)+r.gf)));
+    const candidates=registered.map(p=>{const goals=totals.get(String(p.club||'').toLowerCase());return goals!=null?{player:p.name,club:p.club,goals}:null}).filter(Boolean);
     return candidates.sort((a,b)=>b.goals-a.goals||a.player.localeCompare(b.player))[0]||null;
   }
   if(category==='European Best Defender'){
@@ -325,7 +283,7 @@ function renderAwards(){
         const status=cat==='Player of the Tournament'
           ? (winner?`Winner by public vote • ${totalVotes} total vote${totalVotes===1?'':'s'}`:'Voting open • '+totalVotes+' vote'+(totalVotes===1?'':'s'))
           : cat==='Top Scorer'
-            ? `AUTO • ${auto?.goals||0} goal${auto?.goals===1?'':'s'} • ${auto?.mp||0} match${auto?.mp===1?'':'es'}`
+            ? `Auto-calculated • ${auto?.goals||0} goal${auto?.goals===1?'':'s'}`
             : `Auto-calculated • ${auto?.ga||0} goals conceded`;
         return `<article class="award-card">
           <div class="award-card-art ${player?.club?'has-club-logo':''}">
@@ -346,7 +304,7 @@ function renderAwards(){
   if($('globalAwardsGrid'))$('globalAwardsGrid').innerHTML=GLOBAL_AWARDS.filter(x=>x!=="Ballon d'Or").map(cat=>{
     const a=displayAward(cat),winner=awardWinnerFor(a),player=awardPlayer(cat),auto=globalAutoWinner(cat);
     const detail=winner
-      ? `AUTO • ${cat==='European Top Scorer'?auto?.goals||0:auto?.ga||0} ${cat==='European Top Scorer'?'goals':'goals conceded'} across all leagues + UCL`
+      ? `Auto-calculated • ${cat==='European Top Scorer'?auto?.goals||0:auto?.ga||0} ${cat==='European Top Scorer'?'goals':'goals conceded'} across all leagues + UCL`
       : 'Auto-calculated from published results';
     return `<article class="global-award-card">
       <div class="global-award-art">${awardLogo(cat)}</div>
@@ -640,7 +598,6 @@ async function saveFixtureResult(id){
   if(btn){btn.disabled=true;btn.textContent='Saving…';}
   try{
     await db.collection('fixtures').doc(id).set({homeScore:Number(hv),awayScore:Number(av),resultStatus:'completed',resultUpdatedAt:firebase.firestore.FieldValue.serverTimestamp(),updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
-    await db.collection('fixtures').doc(id).update({homeScorers:firebase.firestore.FieldValue.delete(),awayScorers:firebase.firestore.FieldValue.delete()});
     await loadData();
     adminTab('results');
     alert('Result saved successfully.');
@@ -656,7 +613,7 @@ async function clearFixtureResult(id){
   if(!state.admin)return;
   if(!confirm('Clear this result?'))return;
   try{
-    await db.collection('fixtures').doc(id).update({homeScore:firebase.firestore.FieldValue.delete(),awayScore:firebase.firestore.FieldValue.delete(),homeScorers:firebase.firestore.FieldValue.delete(),awayScorers:firebase.firestore.FieldValue.delete(),resultStatus:firebase.firestore.FieldValue.delete(),resultUpdatedAt:firebase.firestore.FieldValue.delete(),updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
+    await db.collection('fixtures').doc(id).update({homeScore:firebase.firestore.FieldValue.delete(),awayScore:firebase.firestore.FieldValue.delete(),resultStatus:firebase.firestore.FieldValue.delete(),resultUpdatedAt:firebase.firestore.FieldValue.delete(),updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
     await loadData();
     adminTab('results');
   }catch(e){
@@ -667,6 +624,6 @@ async function clearFixtureResult(id){
 window.clearFixtureResult=clearFixtureResult;
 
 function resultFixtureHtml(f){
- const [h,a]=teamsInFixture(f),sc=score(f),ss=fixtureScorerEntries(f);
+ const [h,a]=teamsInFixture(f),sc=score(f);
  return `<article class="admin-item"><div><b>${esc(h)} vs ${esc(a)}</b><span>${esc(compOf(f))} • ${esc(f.round||'Matchday')} • ${esc(dateText(f.date||f.kickoff))}</span></div><div class="admin-result-form"><input type="number" min="0" id="homeScore-${f.id}" value="${sc?sc.h:''}" placeholder="Home"><strong>-</strong><input type="number" min="0" id="awayScore-${f.id}" value="${sc?sc.a:''}" placeholder="Away"><button class="mini-btn" onclick="saveFixtureResult('${f.id}')">Save Result</button>${sc?`<button class="mini-btn danger" onclick="clearFixtureResult('${f.id}')">Clear</button>`:''}</div></article>`;
 }
