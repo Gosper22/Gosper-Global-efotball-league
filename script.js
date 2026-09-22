@@ -76,7 +76,7 @@ function populateClubPicker(q=''){
    ? teams.map(t=>`<option value="${esc(t.name)}">${esc(t.name)}</option>`).join('')
    : '<option value="">No available clubs</option>';
 }
-async function ensureAnon(){if(auth.currentUser)return true;try{await auth.signInAnonymously();return true}catch(e){console.error(e);return false}}
+async function ensureAnon(){if(auth.currentUser)return true;try{const cred=await auth.signInAnonymously();return !!cred.user}catch(e){console.error('Anonymous authentication failed:',e);return false}}
 $('registrationForm')?.addEventListener('submit',async e=>{e.preventDefault();const m=$('registrationMsg');m.className='form-msg';m.textContent='Registering…';if(!(await ensureAnon())){m.className='form-msg error';m.textContent='Firebase Anonymous sign-in is not enabled.';return;}const name=$('name').value.trim(),raw=$('pid').value.trim(),key=raw.toLowerCase().replace(/\s+/g,''),competition=$('competition').value,club=$('club').value;if(!name||!key||!club){m.className='form-msg error';m.textContent='Fill all required fields.';return;}const playerDocId=`${SEASON_ID}_${key.replace(/[^a-z0-9_-]/g,'_')}`;
 const ref=db.collection('players').doc(playerDocId);
 const lockKey=`${SEASON_ID}__${competition}__${club}`.toLowerCase().replace(/[^a-z0-9_-]/g,'_');
@@ -108,7 +108,9 @@ try{
   m.className='form-msg error';
   if(err.message==='PLAYER_EXISTS') m.textContent=`This Player ID is already registered for ${state.season?.name||DEFAULT_SEASON}.`;
   else if(err.message==='TEAM_TAKEN') m.textContent=`${club} is already registered by another player in ${competition}. Choose another club.`;
-  else m.textContent='Registration failed. Please try again.';
+  else if(err&&err.code==='auth/operation-not-allowed') m.textContent='Registration failed: enable Anonymous Authentication in Firebase Authentication.';
+  else if(err&&(err.code==='permission-denied'||err.code==='firestore/permission-denied')) m.textContent='Registration failed: Firestore Rules are blocking registration. Publish the included firestore.rules.';
+  else m.textContent=`Registration failed: ${err?.message||'Unknown Firebase error'}`;
 }});
 
 async function getAll(c){try{const s=await db.collection(c).get();return s.docs.map(d=>({id:d.id,...d.data()}));}catch(e){console.warn(c,e);return[];}}
