@@ -80,8 +80,8 @@ function populateClubPicker(q=''){
    ? teams.map(t=>`<option value="${esc(t.name)}">${esc(t.name)}</option>`).join('')
    : '<option value="">No available clubs</option>';
 }
-async function ensureAnon(){if(auth.currentUser)return true;try{const cred=await auth.signInAnonymously();return !!cred.user}catch(e){console.error('Anonymous authentication failed:',e);return false}}
-$('registrationForm')?.addEventListener('submit',async e=>{e.preventDefault();const m=$('registrationMsg');m.className='form-msg';m.textContent='Registering…';if(!(await ensureAnon())){m.className='form-msg error';m.textContent='Firebase Anonymous sign-in is not enabled.';return;}const name=$('name').value.trim(),raw=$('pid').value.trim(),key=raw.toLowerCase().replace(/\s+/g,''),competition=$('competition').value,club=$('club').value;if(!name||!key||!club){m.className='form-msg error';m.textContent='Fill all required fields.';return;}const playerDocId=`${SEASON_ID}_${key.replace(/[^a-z0-9_-]/g,'_')}`;
+async function ensureAnon(){if(auth.currentUser)return true;try{const cred=await auth.signInAnonymously();return !!cred.user}catch(e){console.warn('Anonymous authentication unavailable; continuing with public registration.',e);return false}}
+$('registrationForm')?.addEventListener('submit',async e=>{e.preventDefault();const m=$('registrationMsg');m.className='form-msg';m.textContent='Registering…';await ensureAnon();const name=$('name').value.trim(),raw=$('pid').value.trim(),key=raw.toLowerCase().replace(/\s+/g,''),competition=$('competition').value,club=$('club').value;if(!name||!key||!club){m.className='form-msg error';m.textContent='Fill all required fields.';return;}const playerDocId=`${SEASON_ID}_${key.replace(/[^a-z0-9_-]/g,'_')}`;
 const ref=db.collection('players').doc(playerDocId);
 const lockKey=`${SEASON_ID}__${competition}__${club}`.toLowerCase().replace(/[^a-z0-9_-]/g,'_');
 const lockRef=db.collection('playerTeamLocks').doc(lockKey);
@@ -98,8 +98,9 @@ try{
     const lockSnap=await tx.get(lockRef);
     if(lockSnap.exists) throw new Error('TEAM_TAKEN');
 
-    tx.set(ref,{name,playerId:raw,phone:raw,playerIdKey:key,uid:auth.currentUser.uid,lockId:lockKey,competition,club,seasonId:SEASON_ID,status:'active',createdAt:firebase.firestore.FieldValue.serverTimestamp()});
-    tx.set(lockRef,{playerDocId,playerIdKey:key,uid:auth.currentUser.uid,competition,club,seasonId:SEASON_ID,status:'active',createdAt:firebase.firestore.FieldValue.serverTimestamp()});
+    const registrationUid=auth.currentUser?.uid || `guest_${key}`;
+    tx.set(ref,{name,playerId:raw,phone:raw,playerIdKey:key,uid:registrationUid,lockId:lockKey,competition,club,seasonId:SEASON_ID,status:'active',createdAt:firebase.firestore.FieldValue.serverTimestamp()});
+    tx.set(lockRef,{playerDocId,playerIdKey:key,uid:registrationUid,competition,club,seasonId:SEASON_ID,status:'active',createdAt:firebase.firestore.FieldValue.serverTimestamp()});
   });
   m.className='form-msg ok';
   m.textContent=`Registration successful — ${club}`;
@@ -112,7 +113,7 @@ try{
   m.className='form-msg error';
   if(err.message==='PLAYER_EXISTS') m.textContent=`This Player ID is already registered for ${state.season?.name||DEFAULT_SEASON}.`;
   else if(err.message==='TEAM_TAKEN') m.textContent=`${club} is already registered by another player in ${competition}. Choose another club.`;
-  else if(err&&err.code==='auth/operation-not-allowed') m.textContent='Registration failed: enable Anonymous Authentication in Firebase Authentication.';
+  else if(err&&err.code==='auth/operation-not-allowed') m.textContent='Registration failed: Firebase Authentication is not available.';
   else if(err&&(err.code==='permission-denied'||err.code==='firestore/permission-denied')) m.textContent='Registration failed: Firestore Rules are blocking registration. Publish the included firestore.rules.';
   else m.textContent=`Registration failed: ${err?.message||'Unknown Firebase error'}`;
 }});
@@ -513,13 +514,20 @@ async function adminDelete(collection,id){if(!confirm('Delete this item?'))retur
 function renderAdmin(){
  const a=$('adminArea');
  if(!state.admin){a.innerHTML=`<div class="admin-lock"><div class="lock-icon">⚙</div><h2>Admin access required</h2><p>Sign in with your Firebase administrator account.</p><button class="primary" id="adminLoginBtn2">Sign in to Control Center</button></div>`;$('adminLoginBtn2').onclick=openAdminLogin;return;}
- a.innerHTML=`<div class="admin-shell"><div class="admin-nav"><button class="admin-tab active" data-admin-tab="overview">Overview</button><button class="admin-tab" data-admin-tab="competitions">Competitions</button><button class="admin-tab" data-admin-tab="teams">Teams</button><button class="admin-tab" data-admin-tab="fixtures">Fixtures</button><button class="admin-tab" data-admin-tab="ucl">UCL Groups</button><button class="admin-tab" data-admin-tab="results">Results</button><button class="admin-tab" data-admin-tab="members">Members</button><button class="admin-tab" data-admin-tab="promotion">Promotion / Relegation</button><button class="admin-tab" data-admin-tab="news">News</button><button class="admin-tab" data-admin-tab="awards">🏆 Awards</button><button class="admin-tab" data-admin-tab="community">💬 Community</button><button class="admin-tab" data-admin-tab="hall">Hall of Fame</button><button class="admin-tab" data-admin-tab="season">Season</button><button class="ghost" id="adminSignOut">Sign out</button></div><div id="adminContent"></div></div>`;
+ a.innerHTML=`<div class="admin-shell"><div class="admin-nav"><button class="admin-tab active" data-admin-tab="overview">Overview</button><button class="admin-tab season-launch-tab" data-admin-tab="newseason">▶ Start New Season</button><button class="admin-tab" data-admin-tab="competitions">Competitions</button><button class="admin-tab" data-admin-tab="teams">Teams</button><button class="admin-tab" data-admin-tab="fixtures">Fixtures</button><button class="admin-tab" data-admin-tab="ucl">UCL Groups</button><button class="admin-tab" data-admin-tab="results">Results</button><button class="admin-tab" data-admin-tab="members">Members</button><button class="admin-tab" data-admin-tab="promotion">Promotion / Relegation</button><button class="admin-tab" data-admin-tab="news">News</button><button class="admin-tab" data-admin-tab="awards">🏆 Awards</button><button class="admin-tab" data-admin-tab="community">💬 Community</button><button class="admin-tab" data-admin-tab="hall">Hall of Fame</button><button class="admin-tab" data-admin-tab="season">Season</button><button class="ghost" id="adminSignOut">Sign out</button></div><div id="adminContent"></div></div>`;
  document.querySelectorAll('.admin-tab').forEach(b=>b.onclick=()=>adminTab(b.dataset.adminTab));$('adminSignOut').onclick=()=>auth.signOut().then(()=>{state.admin=false;renderAdmin();});adminTab('overview');
 }
 function adminTab(tab){
  document.querySelectorAll('.admin-tab').forEach(b=>b.classList.toggle('active',b.dataset.adminTab===tab));
  const c=$('adminContent');
- if(tab==='overview')adminOverview(c);if(tab==='competitions')adminCompetitions(c);if(tab==='teams')adminTeams(c);if(tab==='fixtures')adminFixtures(c);if(tab==='ucl')adminUCL(c);if(tab==='results')adminResults(c);if(tab==='members')adminMembers(c);if(tab==='promotion')adminPromotion(c);if(tab==='news')adminNews(c);if(tab==='awards')adminAwards(c);if(tab==='community')adminCommunity(c);if(tab==='hall')adminHall(c);if(tab==='season')adminSeason(c);
+ if(tab==='overview')adminOverview(c);if(tab==='newseason')adminNewSeason(c);if(tab==='competitions')adminCompetitions(c);if(tab==='teams')adminTeams(c);if(tab==='fixtures')adminFixtures(c);if(tab==='ucl')adminUCL(c);if(tab==='results')adminResults(c);if(tab==='members')adminMembers(c);if(tab==='promotion')adminPromotion(c);if(tab==='news')adminNews(c);if(tab==='awards')adminAwards(c);if(tab==='community')adminCommunity(c);if(tab==='hall')adminHall(c);if(tab==='season')adminSeason(c);
+}
+function adminNewSeason(c){
+ const s=state.season||{};
+ c.innerHTML=`<div class="admin-heading"><div><p class="eyebrow">SEASON CONTROL</p><h2>Start New Season</h2><p>Finish the current season, save its champions, apply promotion/relegation, carry registered players forward, qualify the 16 UCL clubs and generate fresh fixtures.</p></div></div>
+ <div class="admin-control-card season-start-card"><div><p class="eyebrow">CURRENT SEASON</p><h2>${esc(s.name||DEFAULT_SEASON)}</h2><p class="muted">Status: ${esc(s.status||'Ongoing')} • ${esc(s.year||'')}</p></div><button class="primary" id="startSeasonNow" style="font-size:1.05rem;padding:14px 22px">▶ Start New Season</button></div>
+ <div class="admin-control-card"><div><p class="eyebrow">WHAT WILL HAPPEN</p><h3>Season transition</h3><p class="muted">1. Current season is archived. 2. Champions go to Hall of Fame. 3. Championship #1–#4 are promoted. 4. Each major league #8 is relegated. 5. Top 4 from each major league enter the 16-team UCL. 6. New home-and-away fixtures are generated.</p></div></div>`;
+ $('startSeasonNow').onclick=startNewSeason;
 }
 function adminOverview(c){
  const active=(state.season?.activeCompetitions||ALL_COMPETITIONS);
