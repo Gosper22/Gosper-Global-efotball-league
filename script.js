@@ -645,7 +645,29 @@ function adminNews(c){c.innerHTML=`<div class="admin-heading"><div><p class="eye
 function adminMembers(c){const ps=state.players.slice().sort((a,b)=>String(a.name).localeCompare(String(b.name)));c.innerHTML=`<div class="admin-heading"><div><p class="eyebrow">PLAYER MANAGEMENT</p><h2>Registered Members</h2><p>Remove a registration when necessary. This deletes the member from the current Season.</p></div></div><div class="admin-list">${ps.map(p=>`<article class="admin-item member-admin-item"><div><b>${esc(p.name)}</b><span>${esc(p.club||'Club TBA')}</span><p>${esc(p.playerId||'')} • ${esc(p.competition||'')} • ${esc(state.season?.name||DEFAULT_SEASON)}</p></div><button class="mini-btn danger" onclick="deleteMember('${p.id}')">Remove Member</button></article>`).join('')||'<p class="muted">No registered members.</p>'}</div>`;}
 window.deleteMember=async id=>{const p=state.players.find(x=>x.id===id);if(!p)return;if(!confirm(`Remove ${p.name} from ${state.season?.name||DEFAULT_SEASON}? This deletes the registration.`))return;try{const batch=db.batch();batch.delete(db.collection('players').doc(id));if(p.lockId)batch.delete(db.collection('playerTeamLocks').doc(p.lockId));await batch.commit();await loadData();alert('Member removed.');adminTab('members');}catch(e){console.error(e);alert('Could not remove member. Check Firestore Rules for admin writes.');}};
 window.deleteNews=id=>adminDelete('news',id);
-function adminHall(c){c.innerHTML=`<div class="admin-heading"><div><p class="eyebrow">LEGACY</p><h2>Hall of Fame</h2><p>Record champions by competition and Season.</p></div></div><div class="admin-form"><input id="hallSeason" value="${esc(state.season?.name||DEFAULT_SEASON)}" placeholder="Season"><select id="hallComp"><option>Premier League</option><option>Championship</option><option>UCL</option></select><input id="hallWinner" placeholder="Champion / Team"><input id="hallDate" type="date"><button class="primary" id="saveHall">Add Champion</button></div><div class="admin-list">${state.hall.map(h=>`<article class="admin-item"><b>🏆 ${esc(h.winner||h.team)}</b><span>${esc(h.season||'Season')} • ${esc(h.competition||'')}</span></article>`).join('')}</div>`;$('saveHall').onclick=async()=>{await adminSave('hallOfFame',null,{season:$('hallSeason').value.trim(),competition:$('hallComp').value,winner:$('hallWinner').value.trim(),date:$('hallDate').value,seasonId:SEASON_ID});adminTab('hall');};}
+function adminHall(c){
+ c.innerHTML=`<div class="admin-heading"><div><p class="eyebrow">LEGACY</p><h2>Hall of Fame</h2><p>Save every champion permanently. Once saved, the record remains available across all future seasons.</p></div></div><div class="admin-form"><input id="hallSeason" value="${esc(state.season?.name||DEFAULT_SEASON)}" placeholder="Season"><select id="hallComp"><option>Premier League</option><option>LaLiga</option><option>Serie A</option><option>Bundesliga</option><option>Championship</option><option>UCL</option></select><input id="hallWinner" placeholder="Champion / Team" required><input id="hallDate" type="date"><button class="primary" id="saveHall">💾 Save Champion</button></div><div id="hallSaveMsg" class="form-msg" aria-live="polite"></div><div class="admin-list">${state.hall.slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))).map(h=>`<article class="admin-item"><b>🏆 ${esc(h.winner||h.team)}</b><span>${esc(h.season||'Season')} • ${esc(h.competition||'')}</span></article>`).join('')||'<p class="muted">No champions saved yet.</p>'}</div>`;
+ $('saveHall').onclick=async()=>{
+   const season=$('hallSeason').value.trim()||DEFAULT_SEASON;
+   const competition=$('hallComp').value;
+   const winner=$('hallWinner').value.trim();
+   const date=$('hallDate').value||new Date().toISOString().slice(0,10);
+   const msg=$('hallSaveMsg');
+   if(!winner){msg.className='form-msg error';msg.textContent='Enter the champion/team first.';return;}
+   const btn=$('saveHall'); btn.disabled=true; btn.textContent='Saving…'; msg.className='form-msg'; msg.textContent='Saving Hall of Fame record…';
+   try{
+     const safeSeason=(season||'Season').toLowerCase().replace(/[^a-z0-9]+/g,'-');
+     const safeComp=competition.toLowerCase().replace(/[^a-z0-9]+/g,'-');
+     const id=`${safeSeason}__${safeComp}__champion`;
+     await adminSave('hallOfFame',id,{season,competition,winner,date,seasonId:SEASON_ID,type:'League Champion'});
+     msg.className='form-msg success'; msg.textContent='✓ Champion saved permanently to Hall of Fame.';
+     btn.disabled=false; btn.textContent='💾 Save Champion';
+     adminTab('hall');
+   }catch(e){
+     console.error(e); msg.className='form-msg error'; msg.textContent=`Could not save: ${e.message||e}`; btn.disabled=false; btn.textContent='💾 Save Champion';
+   }
+ };
+}
 
 function seasonTeamPool(comp){
   const rows=table(comp);
@@ -730,12 +752,14 @@ async function startNewSeason(){
     MAJOR_LEAGUES.forEach(l=>domesticTables[l]=table(l));
     domesticTables.Championship=table('Championship');
 
-    // League champions for Hall of Fame.
-    const champions=MAJOR_LEAGUES.map(league=>({
+    // Every domestic champion is permanently written to Hall of Fame.
+    // Championship is included because it is also a league in this game.
+    const championCompetitions=[...MAJOR_LEAGUES,'Championship'];
+    const champions=championCompetitions.map(competition=>({
       season:oldSeason.name||`Season ${nextOrder-1}`,
       seasonId:oldSeasonId,
-      competition:league,
-      winner:domesticTables[league][0]?.team||'',
+      competition,
+      winner:domesticTables[competition]?.[0]?.team||'',
       date:new Date().toISOString().slice(0,10),
       type:'League Champion'
     })).filter(x=>x.winner);
@@ -792,21 +816,25 @@ async function startNewSeason(){
 
     // Carry every registered member into the new season with the same club.
     const oldPlayers=(state.players||[]).filter(p=>p.status!=='cancelled');
-    const nextPlayers=oldPlayers.map(p=>({
-      ...p,
-      id:`${newId}__${p.playerId||p.uid||p.id}`,
-      seasonId:newId,
-      status:'active',
-      previousSeasonId:oldSeasonId
-    }));
+    const nextPlayers=oldPlayers.map(p=>{
+      const movedCompetition=Object.entries(nextRosters).find(([,names])=>names.includes(p.club))?.[0] || p.competition;
+      return {
+        ...p,
+        id:`${newId}__${p.playerId||p.uid||p.id}`,
+        seasonId:newId,
+        competition:movedCompetition,
+        status:'active',
+        previousSeasonId:oldSeasonId
+      };
+    });
     await batchWriteDocs('players',nextPlayers);
 
     // Store champions in Hall of Fame without touching previous records.
-    const hallDocs=champions.map((x,i)=>({
-      id:`${oldSeasonId}__${x.competition}__champion`,
+    const hallDocs=champions.map(x=>({
+      id:`${oldSeasonId}__${x.competition.toLowerCase().replace(/[^a-z0-9]+/g,'-')}__champion`,
       ...x
     }));
-    await batchWriteDocs('hallOfFame',hallDocs);
+    if(hallDocs.length) await batchWriteDocs('hallOfFame',hallDocs);
 
     // Generate fresh domestic schedules automatically.
     const start=new Date(); start.setUTCDate(start.getUTCDate()+7);
