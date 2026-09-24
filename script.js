@@ -555,10 +555,50 @@ function adminCompetitions(c){
 }
 function adminTeams(c){
  const all=catalogObjects();
- c.innerHTML=`<div class="admin-heading"><div><p class="eyebrow">CLUB CONTROL</p><h2>Official club pool</h2><p>The four major leagues use 8 clubs each. Championship is locked to exactly 8 African clubs. Use “Apply new club structure” to sync the selected season.</p></div><button class="primary" id="applyClubStructure">Apply new club structure</button></div><div class="admin-team-grid">${all.map(t=>{const saved=state.teams.find(x=>x.name===t.name)||{};const cs=teamCompetitions({...t,...saved});return `<div class="admin-team-card"><div class="admin-team-main">${logo(t.name)}<div><b>${esc(t.name)}</b><small>${esc(t.competition)}</small></div></div><div class="comp-checks"><label><input type="checkbox" data-team-comp="${t.competition}" data-team-name="${esc(t.name)}" checked disabled> ${esc(t.competition)}</label><label class="enable-check"><input type="checkbox" data-team-enabled="${esc(t.name)}" ${saved.enabled!==false?'checked':''}> Available</label></div></div>`}).join('')}</div>`;
- $('applyClubStructure').onclick=async()=>{if(!confirm('Apply the new club structure? This will disable old clubs outside the new catalog and remove old UCL memberships.'))return;try{const batch=db.batch();const wanted=new Set(all.map(t=>t.name));for(const old of state.teams){if(!wanted.has(old.name)){const ref=db.collection('teams').doc(old.id);batch.set(ref,{enabled:false,competitions:old.competitions||[],competition:old.competition||''},{merge:true});}}
- for(const t of all){const enabled=document.querySelector(`[data-team-enabled="${CSS.escape(t.name)}"]`).checked;const ref=db.collection('teams').doc(t.name.toLowerCase().replace(/[^a-z0-9]+/g,'-'));batch.set(ref,{name:t.name,competitions:[t.competition],competition:t.competition,logo:t.logo||'',enabled,seasonId:SEASON_ID},{merge:true});}
- await batch.commit();await adminSave('seasons',SEASON_ID,{activeCompetitions:ALL_COMPETITIONS});await loadData();alert('New club structure applied.');adminTab('teams');}catch(e){console.error(e);alert('Could not apply club structure. Check Firestore Rules.');}};
+ c.innerHTML=`<div class="admin-heading"><div><p class="eyebrow">CLUB CONTROL</p><h2>Official club pool</h2><p>Original structure: 8 clubs in each major league and 8 African clubs in Championship. Team logos below come directly from the original club catalog.</p></div><div class="admin-actions"><button class="primary" id="restoreOriginalClubs">↩ Restore Original Clubs</button><button class="primary" id="applyClubStructure">Save Club Availability</button></div></div><div class="admin-control-card"><p class="muted"><b>Restore Original Clubs</b> removes promoted/relegated club records from the selected season, restores the original 40 clubs, resets their original competitions and restores every original logo. It does not delete previous seasons.</p></div><div class="admin-team-grid">${all.map(t=>{const saved=state.teams.find(x=>x.name===t.name)||{};return `<div class="admin-team-card"><div class="admin-team-main">${logo(t.name)}<div><b>${esc(t.name)}</b><small>${esc(t.competition)}</small></div></div><div class="comp-checks"><label><input type="checkbox" checked disabled> ${esc(t.competition)}</label><label class="enable-check"><input type="checkbox" data-team-enabled="${esc(t.name)}" ${saved.enabled!==false?'checked':''}> Available</label></div></div>`}).join('')}</div>`;
+ $('restoreOriginalClubs').onclick=async()=>{
+   if(!state.admin)return alert('Admin access required.');
+   if(!confirm(`Restore the original 40 clubs for ${state.season?.name||SEASON_ID}?\n\nAll promoted/relegated team records in this season will be removed. Original league assignments and logos will be restored. Previous seasons will not be touched.`))return;
+   try{
+     const allTeams=await getAllStrict('teams');
+     const current=allTeams.filter(t=>!t.seasonId?(SEASON_ID==='season-1'):t.seasonId===SEASON_ID);
+     const batch=db.batch();
+     // Remove every current-season team document first so promoted/relegated duplicates cannot remain.
+     current.forEach(t=>batch.delete(db.collection('teams').doc(t.id)));
+     all.forEach(t=>{
+       const id=`${SEASON_ID}__${t.name.toLowerCase().replace(/[^a-z0-9]+/g,'-')}`;
+       batch.set(db.collection('teams').doc(id),{
+         id,name:t.name,competition:t.competition,competitions:[t.competition],logo:t.logo||'',enabled:true,seasonId:SEASON_ID
+       },{merge:true});
+     });
+     await batch.commit();
+     await adminSave('seasons',SEASON_ID,{activeCompetitions:ALL_COMPETITIONS,manualMovement:{promoted:[],relegated:[]}});
+     await loadData();
+     alert('Original clubs restored successfully. Promoted clubs were removed and all original logos were restored.');
+     adminTab('teams');
+   }catch(e){
+     console.error('restoreOriginalClubs failed',e);
+     alert(`Could not restore the original clubs.\n\nError: ${e.message||e}`);
+   }
+ };
+ $('applyClubStructure').onclick=async()=>{
+   try{
+     const allTeams=await getAllStrict('teams');
+     const batch=db.batch();
+     const current=allTeams.filter(t=>!t.seasonId?(SEASON_ID==='season-1'):t.seasonId===SEASON_ID);
+     current.forEach(old=>{const wanted=all.some(t=>t.name===old.name);if(!wanted)batch.delete(db.collection('teams').doc(old.id));});
+     for(const t of all){
+       const enabled=document.querySelector(`[data-team-enabled="${CSS.escape(t.name)}"]`).checked;
+       const id=`${SEASON_ID}__${t.name.toLowerCase().replace(/[^a-z0-9]+/g,'-')}`;
+       batch.set(db.collection('teams').doc(id),{id,name:t.name,competitions:[t.competition],competition:t.competition,logo:t.logo||'',enabled,seasonId:SEASON_ID},{merge:true});
+     }
+     await batch.commit();
+     await adminSave('seasons',SEASON_ID,{activeCompetitions:ALL_COMPETITIONS});
+     await loadData();
+     alert('Club availability saved with original logos.');
+     adminTab('teams');
+   }catch(e){console.error(e);alert(`Could not save club structure.\n\nError: ${e.message||e}`);}
+ };
 }
 function adminFixtures(c){
  c.innerHTML=`<div class="admin-heading"><div><p class="eyebrow">FIXTURE ENGINE</p><h2>Domestic fixtures</h2><p>Generate a proper Home & Away round-robin for every domestic league. Each Matchday contains each pairing once; the return leg is placed in the second half of the season.</p></div><div class="admin-actions"><select id="genComp">${[...MAJOR_LEAGUES,'Championship'].map(x=>`<option>${x}</option>`).join('')}</select><button class="primary" id="generateFixtures">Generate Home & Away</button><button class="primary danger" id="deleteAllFixtures">Delete ALL Fixtures</button></div></div><div class="form-grid admin-form"><select id="fxComp">${ALL_COMPETITIONS.map(x=>`<option>${x}</option>`).join('')}</select><input id="fxHome" placeholder="Home team"><input id="fxAway" placeholder="Away team"><input id="fxDate" type="date"><input id="fxRound" placeholder="Round / Matchday"><button class="primary" id="addFixture">Add Fixture</button></div><div class="admin-list">${state.fixtures.slice().sort((a,b)=>(dateObj(a.date)||0)-(dateObj(b.date)||0)).map(f=>fixtureHtml(f,true)).join('')||'<p class="muted">No fixtures yet.</p>'}</div>`;
