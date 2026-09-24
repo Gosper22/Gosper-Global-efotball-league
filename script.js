@@ -545,7 +545,7 @@ function adminNewSeason(c){
 }
 function adminOverview(c){
  const active=(state.season?.activeCompetitions||ALL_COMPETITIONS);
- c.innerHTML=`<div class="admin-grid"><div class="admin-stat"><b>${state.teams.length||catalog.length}</b><span>Clubs in system</span></div><div class="admin-stat"><b>${state.players.length}</b><span>Players</span></div><div class="admin-stat"><b>${state.fixtures.length}</b><span>Fixtures</span></div><div class="admin-stat"><b>${state.fixtures.filter(f=>score(f)).length}</b><span>Results entered</span></div></div><div class="admin-control-card season-start-card"><div><p class="eyebrow">SEASON CONTROL</p><h2>Start a New Season</h2><p class="muted">Archive the current season, apply promotion/relegation, carry members forward, save champions and generate fresh domestic + UCL fixtures.</p></div><button class="primary" id="adminStartNewSeason">▶ Start New Season</button></div><div class="admin-control-card"><div><p class="eyebrow">CURRENT SEASON</p><h2>${esc(state.season?.name||DEFAULT_SEASON)}</h2><p class="muted">Active competitions: ${active.map(esc).join(' • ')}</p></div><button class="primary" id="quickComp">Choose competitions</button></div><div class="admin-control-card"><div><p class="eyebrow">SEASON MOVEMENT</p><h2>Automatic promotion & relegation</h2><p class="muted">At season end: Championship is a fixed 8-club African competition; it does not receive European relegated clubs.</p></div><button class="primary" id="quickMove">Open</button></div>`;
+ c.innerHTML=`<div class="admin-grid"><div class="admin-stat"><b>${state.teams.length||catalog.length}</b><span>Clubs in system</span></div><div class="admin-stat"><b>${state.players.length}</b><span>Players</span></div><div class="admin-stat"><b>${state.fixtures.length}</b><span>Fixtures</span></div><div class="admin-stat"><b>${state.fixtures.filter(f=>score(f)).length}</b><span>Results entered</span></div></div><div class="admin-control-card season-start-card"><div><p class="eyebrow">SEASON CONTROL</p><h2>Start a New Season</h2><p class="muted">Archive the current season, apply promotion/relegation, carry members forward, save champions and generate fresh domestic + UCL fixtures.</p></div><button class="primary" id="adminStartNewSeason">▶ Start New Season</button></div><div class="admin-control-card"><div><p class="eyebrow">CURRENT SEASON</p><h2>${esc(state.season?.name||DEFAULT_SEASON)}</h2><p class="muted">Active competitions: ${active.map(esc).join(' • ')}</p></div><button class="primary" id="quickComp">Choose competitions</button></div><div class="admin-control-card"><div><p class="eyebrow">SEASON MOVEMENT</p><h2>Manual promotion & relegation</h2><p class="muted">Promotion and relegation are selected manually before starting the next season.</p></div><button class="primary" id="quickMove">Open</button></div>`;
  $('adminStartNewSeason').onclick=startNewSeason;$('quickComp').onclick=()=>adminTab('competitions');$('quickMove').onclick=()=>adminTab('promotion');
 }
 function adminCompetitions(c){
@@ -558,23 +558,61 @@ function adminTeams(c){
  c.innerHTML=`<div class="admin-heading"><div><p class="eyebrow">CLUB CONTROL</p><h2>Official club pool</h2><p>Original structure: 8 clubs in each major league and 8 African clubs in Championship. Team logos below come directly from the original club catalog.</p></div><div class="admin-actions"><button class="primary" id="restoreOriginalClubs">↩ Restore Original Clubs</button><button class="primary" id="applyClubStructure">Save Club Availability</button></div></div><div class="admin-control-card"><p class="muted"><b>Restore Original Clubs</b> removes promoted/relegated club records from the selected season, restores the original 40 clubs, resets their original competitions and restores every original logo. It does not delete previous seasons.</p></div><div class="admin-team-grid">${all.map(t=>{const saved=state.teams.find(x=>x.name===t.name)||{};return `<div class="admin-team-card"><div class="admin-team-main">${logo(t.name)}<div><b>${esc(t.name)}</b><small>${esc(t.competition)}</small></div></div><div class="comp-checks"><label><input type="checkbox" checked disabled> ${esc(t.competition)}</label><label class="enable-check"><input type="checkbox" data-team-enabled="${esc(t.name)}" ${saved.enabled!==false?'checked':''}> Available</label></div></div>`}).join('')}</div>`;
  $('restoreOriginalClubs').onclick=async()=>{
    if(!state.admin)return alert('Admin access required.');
-   if(!confirm(`Restore the original 40 clubs for ${state.season?.name||SEASON_ID}?\n\nAll promoted/relegated team records in this season will be removed. Original league assignments and logos will be restored. Previous seasons will not be touched.`))return;
+   const live=currentSeasonRecord();
+   const targetId=live?.id||SEASON_ID;
+   const targetName=live?.name||state.season?.name||DEFAULT_SEASON;
+   if(!confirm(`HARD RESET the clubs for ${targetName}?\n\nThis will remove EVERY team document belonging to the active season, remove non-original promoted clubs, restore exactly the original 40 clubs with their original logos and competitions, clear manual promotion/relegation, and reset the saved UCL group list. Previous seasons will NOT be changed.`))return;
    try{
-     const allTeams=await getAllStrict('teams');
-     const current=allTeams.filter(t=>!t.seasonId?(SEASON_ID==='season-1'):t.seasonId===SEASON_ID);
-     const batch=db.batch();
-     // Remove every current-season team document first so promoted/relegated duplicates cannot remain.
-     current.forEach(t=>batch.delete(db.collection('teams').doc(t.id)));
-     all.forEach(t=>{
-       const id=`${SEASON_ID}__${t.name.toLowerCase().replace(/[^a-z0-9]+/g,'-')}`;
-       batch.set(db.collection('teams').doc(id),{
-         id,name:t.name,competition:t.competition,competitions:[t.competition],logo:t.logo||'',enabled:true,seasonId:SEASON_ID
-       },{merge:true});
+     const [allTeams,allPlayers,allLocks]=await Promise.all([getAllStrict('teams'),getAllStrict('players'),getAllStrict('playerTeamLocks')]);
+     const originalNames=new Set(all.map(t=>t.name));
+     const originalByName=new Map(all.map(t=>[t.name,t]));
+     const currentTeams=allTeams.filter(t=>!t.seasonId?(targetId==='season-1'):t.seasonId===targetId);
+
+     // Firestore batches have a 500-operation limit. Delete current-season team docs in chunks, then write the exact 40 originals.
+     const deleteInChunks=async(collection,docs)=>{
+       for(let i=0;i<docs.length;i+=400){
+         const b=db.batch();
+         docs.slice(i,i+400).forEach(d=>b.delete(db.collection(collection).doc(d.id)));
+         if(docs.length)await b.commit();
+       }
+     };
+     await deleteInChunks('teams',currentTeams);
+
+     const originalTeamDocs=all.map(t=>({
+       id:`${targetId}__${t.name.toLowerCase().replace(/[^a-z0-9]+/g,'-')}`,
+       name:t.name,competition:t.competition,competitions:[t.competition],logo:t.logo||'',enabled:true,seasonId:targetId
+     }));
+     await batchWriteDocs('teams',originalTeamDocs);
+
+     // Move registered members back to the original competition when their club is one of the original 40.
+     // Members attached to a non-original promoted club are removed from this season because that club no longer exists.
+     const currentPlayers=allPlayers.filter(p=>p.seasonId===targetId||(!p.seasonId&&targetId==='season-1'));
+     const playersToDelete=currentPlayers.filter(p=>!originalNames.has(p.club));
+     await deleteInChunks('players',playersToDelete);
+     const playersToRestore=currentPlayers.filter(p=>originalNames.has(p.club)).map(p=>({
+       ...p,seasonId:targetId,competition:originalByName.get(p.club).competition,status:'active'
+     }));
+     if(playersToRestore.length)await batchWriteDocs('players',playersToRestore);
+
+     const currentLocks=allLocks.filter(x=>x.seasonId===targetId||(!x.seasonId&&targetId==='season-1'));
+     const locksToDelete=currentLocks.filter(x=>!originalNames.has(x.club));
+     await deleteInChunks('playerTeamLocks',locksToDelete);
+
+     // Reset season-level movement/UCL state so old promoted teams cannot reappear from cached season data.
+     const emptyGroups={A:[],B:[],C:[],D:[]};
+     await adminSave('seasons',targetId,{
+       activeCompetitions:ALL_COMPETITIONS,
+       manualMovement:{promoted:[],relegated:[]},
+       promoted:[],
+       relegated:[],
+       uclTeams:[],
+       uclGroups:emptyGroups,
+       clubsRestoredAt:firebase.firestore.FieldValue.serverTimestamp()
      });
-     await batch.commit();
-     await adminSave('seasons',SEASON_ID,{activeCompetitions:ALL_COMPETITIONS,manualMovement:{promoted:[],relegated:[]}});
+
+     SEASON_ID=targetId;
      await loadData();
-     alert('Original clubs restored successfully. Promoted clubs were removed and all original logos were restored.');
+     alert(`Original clubs restored for ${targetName}.\n\n✓ Exactly 40 original clubs\n✓ Original competitions restored\n✓ Original logos restored\n✓ Promoted/non-original clubs removed\n✓ Manual promotion/relegation cleared\n✓ Saved UCL groups reset\n✓ Previous seasons untouched`);
      adminTab('teams');
    }catch(e){
      console.error('restoreOriginalClubs failed',e);
