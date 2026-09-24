@@ -39,7 +39,7 @@ function go(page){document.querySelectorAll('.page').forEach(x=>x.classList.togg
 document.addEventListener('click',e=>{const b=e.target.closest('[data-page]');if(b)go(b.dataset.page);});
 $('mobileMenu')?.addEventListener('click',()=>$('sidebar').classList.toggle('open'));
 $('registerCta')?.addEventListener('click',openRegister);$('registerPlayerBtn')?.addEventListener('click',openRegister);$('closeRegister')?.addEventListener('click',closeRegister);$('registerModal')?.addEventListener('click',e=>{if(e.target===$('registerModal'))closeRegister()});
-$('competition')?.addEventListener('change',()=>populateClubPicker($('clubSearch').value));$('clubSearch')?.addEventListener('input',()=>populateClubPicker($('clubSearch').value));$('teamSearch')?.addEventListener('input',renderTeams);$('fixtureCompetition')?.addEventListener('change',renderFixtures);$('fixtureStatus')?.addEventListener('change',renderFixtures);$('standingsCompetition')?.addEventListener('change',renderStandings);$('globalSearch')?.addEventListener('input',searchSite);$('seasonSelector')?.addEventListener('change',e=>switchSeason(e.target.value));
+$('competition')?.addEventListener('change',()=>populateClubPicker($('clubSearch').value));$('clubSearch')?.addEventListener('input',()=>populateClubPicker($('clubSearch').value));$('teamSearch')?.addEventListener('input',renderTeams);$('fixtureCompetition')?.addEventListener('change',renderFixtures);$('fixtureStatus')?.addEventListener('change',renderFixtures);$('standingsCompetition')?.addEventListener('change',renderStandings);$('globalSearch')?.addEventListener('input',searchSite);$('seasonSelector')?.addEventListener('change',e=>switchSeason(e.target.value));$('startNewSeason')?.addEventListener('click',startNewSeason);
 document.querySelectorAll('.competition-card').forEach(c=>c.addEventListener('click',()=>{go('competitions');showCompetition(c.dataset.competition)}));
 
 function openRegister(){ $('registerModal').hidden=false; populateClubPicker(''); setTimeout(()=>$('name')?.focus(),60); }
@@ -58,7 +58,11 @@ function teamObjects(comp){
 function catalogObjects(){return catalog.slice();}
 const MAJOR_LEAGUES=['Premier League','LaLiga','Serie A','Bundesliga'];
 const ALL_COMPETITIONS=[...MAJOR_LEAGUES,'Championship','UCL'];
-function qualifiedUCLTeams(){return MAJOR_LEAGUES.flatMap(league=>table(league).slice(0,4).map((r,i)=>({name:r.team,league,rank:i+1})));}
+function qualifiedUCLTeams(){
+ const stored=Array.isArray(state.season?.uclTeams)?state.season.uclTeams:[];
+ if(stored.length===16)return stored;
+ return MAJOR_LEAGUES.flatMap(league=>table(league).slice(0,4).map((r,i)=>({name:r.team,league,rank:i+1})));
+}
 
 function activeTeams(comp){const teams=teamObjects(comp).filter(t=>isCompActive(comp));return comp==='Championship'?teams.slice(0,8):teams;}
 function populateClubPicker(q=''){
@@ -642,6 +646,192 @@ function adminMembers(c){const ps=state.players.slice().sort((a,b)=>String(a.nam
 window.deleteMember=async id=>{const p=state.players.find(x=>x.id===id);if(!p)return;if(!confirm(`Remove ${p.name} from ${state.season?.name||DEFAULT_SEASON}? This deletes the registration.`))return;try{const batch=db.batch();batch.delete(db.collection('players').doc(id));if(p.lockId)batch.delete(db.collection('playerTeamLocks').doc(p.lockId));await batch.commit();await loadData();alert('Member removed.');adminTab('members');}catch(e){console.error(e);alert('Could not remove member. Check Firestore Rules for admin writes.');}};
 window.deleteNews=id=>adminDelete('news',id);
 function adminHall(c){c.innerHTML=`<div class="admin-heading"><div><p class="eyebrow">LEGACY</p><h2>Hall of Fame</h2><p>Record champions by competition and Season.</p></div></div><div class="admin-form"><input id="hallSeason" value="${esc(state.season?.name||DEFAULT_SEASON)}" placeholder="Season"><select id="hallComp"><option>Premier League</option><option>Championship</option><option>UCL</option></select><input id="hallWinner" placeholder="Champion / Team"><input id="hallDate" type="date"><button class="primary" id="saveHall">Add Champion</button></div><div class="admin-list">${state.hall.map(h=>`<article class="admin-item"><b>🏆 ${esc(h.winner||h.team)}</b><span>${esc(h.season||'Season')} • ${esc(h.competition||'')}</span></article>`).join('')}</div>`;$('saveHall').onclick=async()=>{await adminSave('hallOfFame',null,{season:$('hallSeason').value.trim(),competition:$('hallComp').value,winner:$('hallWinner').value.trim(),date:$('hallDate').value,seasonId:SEASON_ID});adminTab('hall');};}
+
+function seasonTeamPool(comp){
+  const rows=table(comp);
+  const names=rows.map(r=>r.team).filter(Boolean);
+  const current=teamObjects(comp).map(t=>t.name).filter(Boolean);
+  return names.length===8?names:current.slice(0,8);
+}
+function makeRoundRobinGames(teams, startDate, prefix='Matchday'){
+  const arr=teams.slice();
+  if(arr.length%2)arr.push(null);
+  const n=arr.length, rounds=n-1, half=n/2, first=[];
+  for(let r=0;r<rounds;r++){
+    const games=[];
+    for(let i=0;i<half;i++){
+      const home=arr[i], away=arr[n-1-i];
+      if(home&&away)games.push([home,away]);
+    }
+    first.push(games);
+    arr=[arr[0],arr[n-1],...arr.slice(1,n-1)];
+  }
+  const out=[];
+  const all=[...first,...first.map(g=>g.map(([h,a])=>[a,h]))];
+  const base=new Date(startDate+'T00:00:00Z');
+  all.forEach((games,r)=>{
+    const d=new Date(base); d.setUTCDate(d.getUTCDate()+r*7);
+    const date=d.toISOString().slice(0,10);
+    games.forEach(([home,away])=>out.push({home,away,round:`${prefix} ${r+1}`,date}));
+  });
+  return out;
+}
+function buildUCLGroups(qualified){
+  const groups={A:[],B:[],C:[],D:[]};
+  qualified.slice().sort((a,b)=>(a.rank||0)-(b.rank||0)||String(a.league).localeCompare(String(b.league)))
+    .forEach(q=>{ const gi=Math.max(0,Math.min(3,(q.rank||1)-1)); groups[['A','B','C','D'][gi]].push(q); });
+  return groups;
+}
+function buildUCLFixtures(groups,startDate){
+  const out=[], base=new Date(startDate+'T00:00:00Z'), letters=['A','B','C','D'];
+  letters.forEach((g,gi)=>{
+    const teams=(groups[g]||[]).map(x=>typeof x==='string'?x:x.name).filter(Boolean);
+    if(teams.length!==4)return;
+    const rounds=[
+      [[teams[0],teams[1]],[teams[2],teams[3]]],
+      [[teams[0],teams[2]],[teams[3],teams[1]]],
+      [[teams[0],teams[3]],[teams[1],teams[2]]],
+      [[teams[1],teams[0]],[teams[3],teams[2]]],
+      [[teams[2],teams[0]],[teams[1],teams[3]]],
+      [[teams[3],teams[0]],[teams[2],teams[1]]]
+    ];
+    rounds.forEach((games,r)=>{
+      const d=new Date(base); d.setUTCDate(d.getUTCDate()+r*14+gi*2);
+      const date=d.toISOString().slice(0,10);
+      games.forEach(([home,away])=>out.push({competition:'UCL',group:g,home,away,round:`Matchday ${r+1}`,date,stage:'Group Stage'}));
+    });
+  });
+  return out;
+}
+async function batchWriteDocs(collection, docs, mapper){
+  for(let i=0;i<docs.length;i+=400){
+    const batch=db.batch();
+    docs.slice(i,i+400).forEach(item=>{
+      const ref=db.collection(collection).doc(item.id||db.collection(collection).doc().id);
+      batch.set(ref,mapper?mapper(item):item,{merge:true});
+    });
+    await batch.commit();
+  }
+}
+async function startNewSeason(){
+  if(!state.admin){
+    alert('Admin access required. Sign in from Admin Panel first.');
+    return;
+  }
+  const oldSeasonId=SEASON_ID;
+  const oldSeason=state.season||{};
+  const nextOrder=(Math.max(0,...state.seasons.map(x=>Number(x.order||0)))||0)+1;
+  const newId=`season-${nextOrder}`, newName=`Season ${nextOrder}`;
+  if(!confirm(`Start ${newName} now?\n\n${oldSeason.name||'Current season'} will be archived. Results, champions and history will remain available. Members will continue with the same clubs.`))return;
+
+  try{
+    // Capture final tables before changing the season.
+    const domesticTables={};
+    MAJOR_LEAGUES.forEach(l=>domesticTables[l]=table(l));
+    domesticTables.Championship=table('Championship');
+
+    // League champions for Hall of Fame.
+    const champions=MAJOR_LEAGUES.map(league=>({
+      season:oldSeason.name||`Season ${nextOrder-1}`,
+      seasonId:oldSeasonId,
+      competition:league,
+      winner:domesticTables[league][0]?.team||'',
+      date:new Date().toISOString().slice(0,10),
+      type:'League Champion'
+    })).filter(x=>x.winner);
+
+    // Promotion/relegation: Championship #1-4 -> the four major leagues; #8 of each major league -> Championship.
+    const promoted=domesticTables.Championship.slice(0,4).map((r,i)=>({team:r.team,to:MAJOR_LEAGUES[i],rank:i+1}));
+    const relegated=MAJOR_LEAGUES.map(league=>({team:domesticTables[league][7]?.team||'',from:league})).filter(x=>x.team);
+
+    const nextRosters={};
+    MAJOR_LEAGUES.forEach(league=>{
+      const old=domesticTables[league].map(r=>r.team);
+      const drop=domesticTables[league][7]?.team;
+      const add=promoted.find(x=>x.to===league)?.team;
+      nextRosters[league]=old.filter(x=>x!==drop);
+      if(add)nextRosters[league].push(add);
+      nextRosters[league]=nextRosters[league].slice(0,8);
+    });
+    const chOld=domesticTables.Championship.map(r=>r.team);
+    const promotedNames=new Set(promoted.map(x=>x.team));
+    nextRosters.Championship=chOld.filter(x=>!promotedNames.has(x));
+    relegated.forEach(x=>{if(!nextRosters.Championship.includes(x.team))nextRosters.Championship.push(x.team);});
+    nextRosters.Championship=nextRosters.Championship.slice(0,8);
+
+    // UCL for the new season is the 16 qualifiers from the completed season.
+    const uclTeams=MAJOR_LEAGUES.flatMap(league=>domesticTables[league].slice(0,4).map((r,i)=>({name:r.team,league,rank:i+1})));
+    const uclGroups=buildUCLGroups(uclTeams);
+
+    const year=String(Number(oldSeason.year||new Date().getUTCFullYear())+1);
+    const theme=((nextOrder-1)%6)+1;
+    await db.collection('seasons').doc(newId).set({
+      id:newId,name:newName,year,status:'Ongoing',order:nextOrder,theme,current:true,
+      activeCompetitions:ALL_COMPETITIONS,uclTeams,uclGroups,
+      promoted,relegated,previousSeasonId:oldSeasonId,
+      createdAt:firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    // Archive old season.
+    await db.collection('seasons').doc(oldSeasonId).set({current:false,status:'Completed'},{merge:true});
+
+    // Build the next season's club roster.
+    const catalogByName=new Map(catalog.map(x=>[x[0],x]));
+    const nextTeamDocs=[];
+    Object.entries(nextRosters).forEach(([competition,names])=>{
+      names.forEach(name=>{
+        const base=catalogByName.get(name)||[];
+        nextTeamDocs.push({
+          id:`${newId}__${name.toLowerCase().replace(/[^a-z0-9]+/g,'-')}`,
+          name,competition,competitions:[competition],logo:base[2]||'',enabled:true,seasonId:newId
+        });
+      });
+    });
+    // UCL participants are represented through season.uclTeams, not as domestic clubs.
+    await batchWriteDocs('teams',nextTeamDocs);
+
+    // Carry every registered member into the new season with the same club.
+    const oldPlayers=(state.players||[]).filter(p=>p.status!=='cancelled');
+    const nextPlayers=oldPlayers.map(p=>({
+      ...p,
+      id:`${newId}__${p.playerId||p.uid||p.id}`,
+      seasonId:newId,
+      status:'active',
+      previousSeasonId:oldSeasonId
+    }));
+    await batchWriteDocs('players',nextPlayers);
+
+    // Store champions in Hall of Fame without touching previous records.
+    const hallDocs=champions.map((x,i)=>({
+      id:`${oldSeasonId}__${x.competition}__champion`,
+      ...x
+    }));
+    await batchWriteDocs('hallOfFame',hallDocs);
+
+    // Generate fresh domestic schedules automatically.
+    const start=new Date(); start.setUTCDate(start.getUTCDate()+7);
+    const startDate=start.toISOString().slice(0,10);
+    const allFixtures=[];
+    MAJOR_LEAGUES.concat(['Championship']).forEach(comp=>{
+      makeRoundRobinGames(nextRosters[comp],startDate).forEach(x=>allFixtures.push({
+        id:null,competition:comp,homeTeam:x.home,awayTeam:x.away,round:x.round,date:x.date,seasonId:newId
+      }));
+    });
+    buildUCLFixtures(uclGroups,startDate).forEach(x=>allFixtures.push({...x,id:null,seasonId:newId}));
+    await batchWriteDocs('fixtures',allFixtures);
+
+    // Switch the UI to the new page/season.
+    SEASON_ID=newId;
+    await loadData();
+    go('dashboard');
+    alert(`${newName} started successfully.\n\n• 5 leagues restarted with fresh fixtures\n• Members carried over\n• Previous champions saved to Hall of Fame\n• 16 UCL qualifiers carried over\n• Promotion/relegation applied\n• ${newName} is now active`);
+  }catch(e){
+    console.error('startNewSeason failed',e);
+    alert(`Could not start the new season.\n\n${e.message||e}`);
+  }
+}
+window.startNewSeason=startNewSeason;
+
 function adminSeason(c){
  const s=state.season||{};
  c.innerHTML=`<div class="admin-heading"><div><p class="eyebrow">SEASON MANAGEMENT</p><h2>Season notebook</h2><p>Every season is a separate page. Previous seasons remain unchanged.</p></div><button class="primary" id="newSeason">＋ Open New Season</button></div>
@@ -649,7 +839,7 @@ function adminSeason(c){
  <div class="admin-form"><label>Season name<input id="seasonName" value="${esc(s.name||DEFAULT_SEASON)}" placeholder="Season name"></label><label>Status<select id="seasonStatus"><option ${s.status==='Upcoming'?'selected':''}>Upcoming</option><option ${s.status==='Ongoing'?'selected':''}>Ongoing</option><option ${s.status==='Completed'?'selected':''}>Completed</option></select></label><label>Year<input id="seasonYear" value="${esc(s.year||'2026')}" placeholder="Year"></label><label>Theme<select id="seasonTheme">${[1,2,3,4,5,6].map(n=>`<option value="${n}" ${(Number(s.theme||1)===n)?'selected':''}>Theme ${n}</option>`).join('')}</select></label><button class="primary" id="saveSeason">Save Page</button></div>`;
  c.querySelectorAll('[data-open-season]').forEach(b=>b.onclick=()=>switchSeason(b.dataset.openSeason).then(()=>adminTab('season')));
  $('saveSeason').onclick=async()=>{const active=s.activeCompetitions||ALL_COMPETITIONS;await adminSave('seasons',SEASON_ID,{name:$('seasonName').value.trim(),status:$('seasonStatus').value,year:$('seasonYear').value,theme:Number($('seasonTheme').value),current:true,activeCompetitions:active});await loadData();adminTab('season');};
- $('newSeason').onclick=async()=>{const nextOrder=(Math.max(0,...state.seasons.map(x=>Number(x.order||0)))||0)+1;const id=`season-${nextOrder}`,name=`Season ${nextOrder}`;if(!confirm(`Open ${name} as a new page? ${state.season?.name||DEFAULT_SEASON} will remain untouched.`))return;try{await db.collection('seasons').doc(id).set({id,name,year:String(Number(state.season?.year||2026)+1),status:'Upcoming',order:nextOrder,theme:((nextOrder-1)%6)+1,current:true,activeCompetitions:ALL_COMPETITIONS,createdAt:firebase.firestore.FieldValue.serverTimestamp()});const batch=db.batch();teamObjects().forEach(t=>{const ref=db.collection('teams').doc(`${id}__${t.name.toLowerCase().replace(/[^a-z0-9]+/g,'-')}`);batch.set(ref,{name:t.name,competition:t.competition,competitions:teamCompetitions(t),logo:t.logo||'',enabled:t.enabled!==false,seasonId:id},{merge:true});});await batch.commit();await db.collection('seasons').doc(SEASON_ID).set({current:false,status:'Completed'},{merge:true});SEASON_ID=id;await loadData();go('admin');adminTab('season');alert(`${name} opened. ${state.seasons.find(x=>x.id!==id&&x.order===nextOrder-1)?.name||'Previous season'} remains archived.`);}catch(e){console.error(e);alert('Could not open the new season.');}};
+ $('newSeason').onclick=startNewSeason;
 }
 auth.onAuthStateChanged(async u=>{state.admin=!!u&&!u.isAnonymous;await loadData();});function adminResults(c){
  const played=state.fixtures.slice().sort((a,b)=>(dateObj(b.date||b.kickoff)||0)-(dateObj(a.date||a.kickoff)||0));
