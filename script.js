@@ -142,7 +142,38 @@ function teamsInFixture(f){return [f.homeTeam||f.home||f.teamA||'',f.awayTeam||f
 function compOf(f){return f.competition||'Premier League';}
 function table(comp){const map=new Map(teamObjects(comp).map(t=>[t.name,{team:t.name,mp:0,w:0,d:0,l:0,gf:0,ga:0,gd:0,pts:0}]));state.fixtures.filter(f=>compOf(f)===comp&&score(f)&&map.has((f.homeTeam||f.home))&&map.has((f.awayTeam||f.away))).forEach(f=>{const s=score(f),[h,a]=teamsInFixture(f);if(!map.has(h))map.set(h,{team:h,mp:0,w:0,d:0,l:0,gf:0,ga:0,gd:0,pts:0});if(!map.has(a))map.set(a,{team:a,mp:0,w:0,d:0,l:0,gf:0,ga:0,gd:0,pts:0});const H=map.get(h),A=map.get(a);H.mp++;A.mp++;H.gf+=s.h;H.ga+=s.a;A.gf+=s.a;A.ga+=s.h;if(s.h>s.a){H.w++;H.pts+=3;A.l++;}else if(s.a>s.h){A.w++;A.pts+=3;H.l++;}else{H.d++;A.d++;H.pts++;A.pts++;}});return [...map.values()].map(x=>({...x,gd:x.gf-x.ga})).sort((a,b)=>b.pts-a.pts||b.gd-a.gd||b.gf-a.gf||a.team.localeCompare(b.team));}
 function rowHtml(r,i){return `<tr><td><b>${i+1}</b></td><td><div class="team-cell">${logo(r.team,true)}<b>${esc(r.team)}</b></div></td><td>${r.mp}</td><td>${r.w}</td><td>${r.d}</td><td>${r.l}</td><td>${r.gf}</td><td>${r.ga}</td><td>${r.gd}</td><td><b>${r.pts}</b></td></tr>`;}
-function renderStandings(){const c=$('standingsCompetition')?.value||'Premier League';const rows=table(c);$('standingsTable').innerHTML=rows.length?rows.map(rowHtml).join(''):`<tr><td colspan="10" class="empty">No results published yet.</td></tr>`;}
+function uclGroupTable(group){
+ const seasonGroups=state.season?.uclGroups||{};
+ const raw=Array.isArray(seasonGroups[group])?seasonGroups[group]:[];
+ const names=raw.map(x=>typeof x==='string'?x:x.name).filter(Boolean);
+ const map=new Map(names.map(name=>[name,{team:name,mp:0,w:0,d:0,l:0,gf:0,ga:0,gd:0,pts:0}]));
+ state.fixtures.filter(f=>compOf(f)==='UCL'&&String(f.group||'').toUpperCase()===group&&score(f)).forEach(f=>{
+   const s=score(f),[h,a]=teamsInFixture(f);
+   if(!map.has(h)||!map.has(a))return;
+   const H=map.get(h),A=map.get(a); H.mp++; A.mp++; H.gf+=s.h; H.ga+=s.a; A.gf+=s.a; A.ga+=s.h;
+   if(s.h>s.a){H.w++;H.pts+=3;A.l++;}else if(s.a>s.h){A.w++;A.pts+=3;H.l++;}else{H.d++;A.d++;H.pts++;A.pts++;}
+ });
+ return [...map.values()].map(x=>({...x,gd:x.gf-x.ga})).sort((a,b)=>b.pts-a.pts||b.gd-a.gd||b.gf-a.gf||a.team.localeCompare(b.team));
+}
+function renderUclGroups(){
+ const box=$('uclGroupsStandings'),standard=$('standardStandingsPanel');
+ if(!box||!standard)return;
+ const groups=['A','B','C','D'];
+ const hasGroups=groups.some(g=>Array.isArray(state.season?.uclGroups?.[g])&&state.season.uclGroups[g].length);
+ standard.hidden=true; box.hidden=false;
+ box.innerHTML=groups.map(g=>{
+   const rows=uclGroupTable(g);
+   return `<div class="tool-card"><h3>GROUP ${g}</h3><div class="table-wrap"><table class="standings-table"><thead><tr><th>#</th><th>CLUB</th><th>MP</th><th>W</th><th>D</th><th>L</th><th>GD</th><th>PTS</th></tr></thead><tbody>${rows.length?rows.map((r,i)=>`<tr><td><b>${i+1}</b></td><td><div class="team-cell">${logo(r.team,true)}<b>${esc(r.team)}</b></div></td><td>${r.mp}</td><td>${r.w}</td><td>${r.d}</td><td>${r.l}</td><td>${r.gd}</td><td><b>${r.pts}</b></td></tr>`).join(''):'<tr><td colspan="8" class="empty">No teams assigned.</td></tr>'}</tbody></table></div><p class="muted" style="margin-top:10px">${hasGroups?`Group ${g} • ${rows.length} clubs • Home & Away`: 'UCL groups have not been generated yet.'}</p></div>`;
+ }).join('');
+}
+function renderStandings(){
+ const c=$('standingsCompetition')?.value||'Premier League';
+ if(c==='UCL'){renderUclGroups();return;}
+ const box=$('uclGroupsStandings'),standard=$('standardStandingsPanel');
+ if(box)box.hidden=true;if(standard)standard.hidden=false;
+ const rows=table(c);
+ $('standingsTable').innerHTML=rows.length?rows.map(rowHtml).join(''):`<tr><td colspan="10" class="empty">No results published yet.</td></tr>`;
+}
 function fixtureHtml(f,admin=false){const [h,a]=teamsInFixture(f),s=score(f);return `<article class="fixture-card"><div class="fixture-meta"><span class="competition-pill">${esc(compOf(f))}</span><span>${dateText(f.date||f.kickoff)}</span><span>${esc(f.round||'Match')}</span></div><div class="fixture-teams"><div class="fixture-team">${logo(h)}<strong>${esc(h)}</strong></div><div class="fixture-score"><b>${s?`${s.h} - ${s.a}`:'VS'}</b><small>${s?'FULL TIME':'UPCOMING'}</small></div><div class="fixture-team">${logo(a)}<strong>${esc(a)}</strong></div></div>${admin?`<div class="fixture-admin-actions"><button class="mini-btn" onclick="editFixture('${f.id}')">Edit</button><button class="mini-btn danger" onclick="deleteFixture('${f.id}')">Delete</button></div>`:''}</article>`;}
 function renderFixtures(){
  let fs=state.fixtures.filter(f=>{const c=compOf(f);const [h,a]=teamsInFixture(f);return !!teamObjects(c).find(t=>t.name===h)&&!!teamObjects(c).find(t=>t.name===a);});
