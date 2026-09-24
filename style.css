@@ -42,3 +42,23 @@
 @media(max-width:900px){.ballon-hero{grid-template-columns:1fr}.ballon-art{min-height:220px}.award-cards,.global-awards-grid{grid-template-columns:1fr}}
 
 [hidden]{display:none!important}.admin-field-label,.nominee-inputs label,.ballon-input-grid label{display:grid;gap:6px;color:#9eaa93;font-size:10px;font-weight:700}.admin-control-card{padding:16px;border:1px solid rgba(186,255,33,.22);background:rgba(186,255,33,.05);border-radius:14px}.auto-award-value{font-size:20px!important;color:var(--text);font-weight:800;margin:7px 0!important}.manual-award-title{padding:13px;border:1px solid rgba(218,174,52,.22);background:rgba(218,174,52,.05);border-radius:12px;display:grid;gap:4px}.manual-award-title span{font-size:10px;color:var(--muted)}.nominee-inputs{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.ballon-input-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.manual-vote-preview{padding:10px 12px;border-radius:10px;background:rgba(255,255,255,.035);color:var(--muted);font-size:10px}.manual-vote-preview strong{color:var(--accent)}@media(max-width:700px){.nominee-inputs,.ballon-input-grid{grid-template-columns:1fr}}
+
+
+/* Season notebook themes: each season gets its own visual identity without changing previous season data. */
+.season-switcher{display:inline-flex;align-items:center;gap:6px;margin-left:10px;padding:5px 8px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--muted);font-size:11px}
+.season-switcher select{border:0;background:transparent;color:var(--text);font:inherit;outline:0;cursor:pointer}
+body[data-season-theme="1"]{--accent:#baff21;--accent-soft:rgba(186,255,33,.10);--season-glow:rgba(186,255,33,.16)}
+body[data-season-theme="2"]{--accent:#42d9ff;--accent-soft:rgba(66,217,255,.10);--season-glow:rgba(66,217,255,.16)}
+body[data-season-theme="3"]{--accent:#ff8b3d;--accent-soft:rgba(255,139,61,.10);--season-glow:rgba(255,139,61,.16)}
+body[data-season-theme="4"]{--accent:#c28cff;--accent-soft:rgba(194,140,255,.10);--season-glow:rgba(194,140,255,.16)}
+body[data-season-theme="5"]{--accent:#35e0a1;--accent-soft:rgba(53,224,161,.10);--season-glow:rgba(53,224,161,.16)}
+body[data-season-theme="6"]{--accent:#ff5577;--accent-soft:rgba(255,85,119,.10);--season-glow:rgba(255,85,119,.16)}
+body[data-season-theme] .hero-card{box-shadow:0 24px 80px var(--season-glow)}
+body[data-season-theme] .season-chip{border-color:var(--accent)}
+body[data-season-theme] .page-head h1,body[data-season-theme] .panel h2{transition:color .2s}
+.season-book-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin:0 0 20px}
+.season-book-card{position:relative;padding:20px;border:1px solid var(--line);border-radius:18px;background:linear-gradient(145deg,var(--panel),rgba(255,255,255,.025));box-shadow:0 12px 30px rgba(0,0,0,.14);overflow:hidden}
+.season-book-card:before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--accent);opacity:.35}
+.season-book-card.current{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent-soft),0 16px 36px var(--season-glow)}
+.season-page-no{font-size:9px;letter-spacing:2px;color:var(--accent);font-weight:800;margin-bottom:12px}.season-book-card h3{margin:0 0 6px}.season-book-card p{color:var(--muted);font-size:11px;margin:0 0 15px}
+@media(max-width:760px){.season-switcher{margin-left:4px}.season-switcher select{max-width:92px}.top-left{gap:5px}.season-book-grid{grid-template-columns:1fr 1fr}}
