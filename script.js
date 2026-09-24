@@ -138,6 +138,18 @@ async function loadData(){
  state.awardVotes=awardVotes.filter(v=>!v.seasonId||v.seasonId===SEASON_ID);
  applySeasonTheme(); renderAll(); renderAwards(); renderComments(); if(state.admin)renderAdmin();
 }
+function currentSeasonRecord(){
+ const live=state.seasons.find(s=>s.current===true);
+ return live||state.seasons.find(s=>s.id==='season-1')||state.seasons[0]||null;
+}
+async function getAllStrict(c){
+ const snap=await db.collection(c).get();
+ return snap.docs.map(d=>({id:d.id,...d.data()}));
+}
+function cleanFirestoreDoc(obj){
+ return Object.fromEntries(Object.entries(obj||{}).filter(([,v])=>v!==undefined));
+}
+
 function score(f){const h=f.homeScore??f.homeGoals,a=f.awayScore??f.awayGoals;return h!==undefined&&h!==null&&a!==undefined&&a!==null&&h!==''&&a!==''?{h:+h,a:+a}:null;}
 function teamsInFixture(f){return [f.homeTeam||f.home||f.teamA||'',f.awayTeam||f.away||f.teamB||''];}
 function compOf(f){return f.competition||'Premier League';}
@@ -506,6 +518,8 @@ function openAdminLogin(){
   auth.signInWithEmailAndPassword(email.trim(),password).then(async()=>{state.admin=true;await loadData();go('admin');}).catch(e=>alert('Admin login failed. Check Firebase Authentication email/password.'));
 }
 async function adminSave(collection,id,data){
+  const user=auth.currentUser;
+  if(!user || user.isAnonymous) throw new Error('ADMIN_SESSION_REQUIRED');
   const ref=db.collection(collection).doc(id||db.collection(collection).doc().id);
   await ref.set({...data,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
   await loadData();
@@ -673,12 +687,34 @@ function adminUCL(c){
  };
 }
 function adminPromotion(c){
- const movements=MAJOR_LEAGUES.map(league=>{
-   const rows=table(league).slice().sort((a,b)=>a.pts-b.pts||a.gd-b.gd||a.gf-b.gf);
-   return {league,relegated:rows.slice(0,2)};
- });
- c.innerHTML=`<div class="admin-heading"><div><p class="eyebrow">SEASON MOVEMENT</p><h2>Relegation</h2><p>Championship is a fixed 8-club African competition. It is separate from the four European leagues. UCL qualification uses the top 4 from each major league.</p></div></div>
- <div class="admin-grid">${movements.map(m=>`<div class="tool-card"><h3>RELEGATION — ${esc(m.league)}</h3>${m.relegated.map((r,i)=>`<div class="admin-item"><b>${i+1}. ${esc(r.team)}</b><span>${r.pts} pts • ${r.gd} GD</span></div>`).join('')||'<p class="muted">No table data yet.</p>'}</div>`).join('')}</div>`;
+ const manual=state.season?.manualMovement||{};
+ const promoted=Array.isArray(manual.promoted)?manual.promoted:[];
+ const relegated=Array.isArray(manual.relegated)?manual.relegated:[];
+ const championship=teamObjects('Championship').slice(0,8).map(t=>t.name);
+ const leagueTeams=Object.fromEntries(MAJOR_LEAGUES.map(l=>[l,teamObjects(l).slice(0,8).map(t=>t.name)]));
+ c.innerHTML=`<div class="admin-heading"><div><p class="eyebrow">SEASON MOVEMENT</p><h2>Manual Promotion / Relegation</h2><p>Choose the 4 Championship clubs that will be promoted and the 8th club from each major league that will be relegated. The choices are saved for the <b>next season</b>; the current season is not changed.</p></div></div>
+ <div class="admin-grid">${MAJOR_LEAGUES.map((league,i)=>{
+   const p=promoted.find(x=>x.to===league)?.team||'';
+   const r=relegated.find(x=>x.from===league)?.team||'';
+   return `<div class="tool-card movement-card"><h3>${esc(league)}</h3><label>Promote to ${esc(league)}<select data-promote="${esc(league)}"><option value="">Select Championship club</option>${championship.map(t=>`<option value="${esc(t)}" ${t===p?'selected':''}>${esc(t)}</option>`).join('')}</select></label><label>Relegate from ${esc(league)}<select data-relegate="${esc(league)}"><option value="">Select club</option>${leagueTeams[league].map(t=>`<option value="${esc(t)}" ${t===r?'selected':''}>${esc(t)}</option>`).join('')}</select></label></div>`;
+ }).join('')}</div>
+ <div class="admin-actions-row"><button class="primary" id="saveMovement">Save Promotion / Relegation</button><span class="muted" id="movementMsg"></span></div>`;
+ $('saveMovement').onclick=async()=>{
+   const nextPromoted=MAJOR_LEAGUES.map(league=>({team:c.querySelector(`[data-promote="${CSS.escape(league)}"]`).value,to:league}));
+   const nextRelegated=MAJOR_LEAGUES.map(league=>({team:c.querySelector(`[data-relegate="${CSS.escape(league)}"]`).value,from:league}));
+   const missingP=nextPromoted.filter(x=>!x.team).map(x=>x.to), missingR=nextRelegated.filter(x=>!x.team).map(x=>x.from);
+   const duplicateP=new Set(nextPromoted.filter(x=>x.team).map(x=>x.team)).size!==nextPromoted.filter(x=>x.team).length;
+   if(missingP.length||missingR.length||duplicateP){
+     $('movementMsg').textContent=`Complete all 4 promotions and 4 relegations. ${duplicateP?'A Championship club can only be promoted once.':''}`;
+     return;
+   }
+   const btn=$('saveMovement');btn.disabled=true;btn.textContent='Saving…';
+   try{
+     await adminSave('seasons',SEASON_ID,{manualMovement:{promoted:nextPromoted,relegated:nextRelegated,updatedAt:firebase.firestore.FieldValue.serverTimestamp()}});
+     $('movementMsg').textContent='Saved. These movements will be applied when the next season starts.';
+     adminTab('promotion');
+   }catch(e){console.error(e);$('movementMsg').textContent=`Could not save movement: ${e.message||e}`;btn.disabled=false;btn.textContent='Save Promotion / Relegation';}
+ };
 }
 function adminNews(c){c.innerHTML=`<div class="admin-heading"><div><p class="eyebrow">PUBLISH</p><h2>News & Announcements</h2><p>Publish updates that appear on the public News page.</p></div></div><div class="admin-form"><input id="newsTitle" placeholder="Headline"><input id="newsDate" type="date"><textarea id="newsBody" placeholder="Write announcement..."></textarea><button class="primary" id="saveNews">Publish Announcement</button></div><div class="admin-list">${state.news.map(n=>`<article class="admin-item"><b>${esc(n.title)}</b><span>${esc(n.date||'')}</span><p>${esc(n.body||n.content||'')}</p><button class="mini-btn danger" onclick="deleteNews('${n.id}')">Delete</button></article>`).join('')||'<p class="muted">No news published yet.</p>'}</div>`;$('saveNews').onclick=async()=>{const title=$('newsTitle').value.trim(),body=$('newsBody').value.trim();if(!title||!body)return alert('Headline and announcement text are required.');const btn=$('saveNews');btn.disabled=true;btn.textContent='Publishing…';try{await adminSave('news',null,{title,date:$('newsDate').value,body,seasonId:SEASON_ID,createdAt:firebase.firestore.FieldValue.serverTimestamp()});alert('News published successfully.');adminTab('news');}catch(e){console.error(e);alert('News could not be published. Make sure you are signed in as admin and the latest Firestore Rules are published.');btn.disabled=false;btn.textContent='Publish Announcement';}};}
 function adminMembers(c){const ps=state.players.slice().sort((a,b)=>String(a.name).localeCompare(String(b.name)));c.innerHTML=`<div class="admin-heading"><div><p class="eyebrow">PLAYER MANAGEMENT</p><h2>Registered Members</h2><p>Remove a registration when necessary. This deletes the member from the current Season.</p></div></div><div class="admin-list">${ps.map(p=>`<article class="admin-item member-admin-item"><div><b>${esc(p.name)}</b><span>${esc(p.club||'Club TBA')}</span><p>${esc(p.playerId||'')} • ${esc(p.competition||'')} • ${esc(state.season?.name||DEFAULT_SEASON)}</p></div><button class="mini-btn danger" onclick="deleteMember('${p.id}')">Remove Member</button></article>`).join('')||'<p class="muted">No registered members.</p>'}</div>`;}
@@ -698,7 +734,11 @@ function adminHall(c){
      const safeSeason=(season||'Season').toLowerCase().replace(/[^a-z0-9]+/g,'-');
      const safeComp=competition.toLowerCase().replace(/[^a-z0-9]+/g,'-');
      const id=`${safeSeason}__${safeComp}__champion`;
-     await adminSave('hallOfFame',id,{season,competition,winner,date,seasonId:SEASON_ID,type:'League Champion'});
+     const user=auth.currentUser;
+     if(!user || user.isAnonymous) throw new Error('ADMIN_SESSION_REQUIRED');
+     const hallData={season,competition,winner,date,seasonId:SEASON_ID,type:'League Champion',updatedAt:firebase.firestore.FieldValue.serverTimestamp()};
+     await db.collection('hallOfFame').doc(id).set(hallData,{merge:true});
+     state.hall=[...state.hall.filter(h=>h.id!==id),{id,...hallData,updatedAt:new Date()}];
      msg.className='form-msg success'; msg.textContent='✓ Champion saved permanently to Hall of Fame.';
      btn.disabled=false; btn.textContent='💾 Save Champion';
      adminTab('hall');
@@ -769,133 +809,104 @@ async function batchWriteDocs(collection, docs, mapper){
     const batch=db.batch();
     docs.slice(i,i+400).forEach(item=>{
       const ref=db.collection(collection).doc(item.id||db.collection(collection).doc().id);
-      batch.set(ref,mapper?mapper(item):item,{merge:true});
+      batch.set(ref,cleanFirestoreDoc(mapper?mapper(item):item),{merge:true});
     });
     await batch.commit();
   }
 }
 async function startNewSeason(){
-  if(!state.admin){
-    alert('Admin access required. Sign in from Admin Panel first.');
-    return;
-  }
-  const oldSeasonId=SEASON_ID;
-  const oldSeason=state.season||{};
-  const nextOrder=(Math.max(0,...state.seasons.map(x=>Number(x.order||0)))||0)+1;
-  const newId=`season-${nextOrder}`, newName=`Season ${nextOrder}`;
-  if(!confirm(`Start ${newName} now?\n\n${oldSeason.name||'Current season'} will be archived. Results, champions and history will remain available. Members will continue with the same clubs.`))return;
+ if(!state.admin){alert('Admin access required. Sign in from Admin Panel first.');return;}
+ const adminUser=auth.currentUser;
+ if(!adminUser||adminUser.isAnonymous){alert('Admin session required. Sign in again from Admin Panel.');return;}
+ const liveSeason=currentSeasonRecord();
+ if(!liveSeason){alert('No current season was found.');return;}
+ const oldSeasonId=liveSeason.id;
+ const oldSeason=liveSeason;
+ const nextOrder=(Math.max(0,...state.seasons.map(x=>Number(x.order||0)))||0)+1;
+ const newId=`season-${nextOrder}`,newName=`Season ${nextOrder}`;
+ const movement=oldSeason.manualMovement||{};
+ const promoted=Array.isArray(movement.promoted)?movement.promoted:[];
+ const relegated=Array.isArray(movement.relegated)?movement.relegated:[];
+ if(promoted.length!==4||relegated.length!==4||promoted.some(x=>!x.team||!MAJOR_LEAGUES.includes(x.to))||relegated.some(x=>!x.team||!MAJOR_LEAGUES.includes(x.from))){
+   alert('Manual Promotion / Relegation is not complete. Open Admin → Promotion / Relegation and select 4 promoted clubs and 4 relegated clubs before starting the new season.');
+   return;
+ }
+ if(!confirm(`Start ${newName} now?\n\n${oldSeason.name||'Current season'} will be archived. The promotion/relegation choices you saved manually will be applied to ${newName}. Previous results and history will remain available.`))return;
+ let step='preparing the current season';
+ try{
+   // Always start from the Firestore season marked current, not from an old season the admin may be viewing.
+   const [allSeasons,allTeams,allPlayers,allFixtures]=await Promise.all([
+     getAllStrict('seasons'),getAllStrict('teams'),getAllStrict('players'),getAllStrict('fixtures')
+   ]);
+   const live=allSeasons.find(x=>x.current===true)||allSeasons.find(x=>x.id===oldSeasonId)||oldSeason;
+   if(!live||live.id!==oldSeasonId)throw new Error('CURRENT_SEASON_CHANGED');
+   const currentTeams=allTeams.filter(t=>!t.seasonId?(oldSeasonId==='season-1'):t.seasonId===oldSeasonId);
+   const currentPlayers=allPlayers.filter(p=>p.seasonId===oldSeasonId||(!p.seasonId&&oldSeasonId==='season-1'));
+   const currentFixtures=allFixtures.filter(f=>f.seasonId===oldSeasonId||(!f.seasonId&&oldSeasonId==='season-1'));
+   state.seasons=allSeasons.sort((a,b)=>(Number(a.order||0)-Number(b.order||0))||String(a.name||'').localeCompare(String(b.name||'')));
+   state.season=live;state.teams=currentTeams;state.players=currentPlayers;state.fixtures=currentFixtures;SEASON_ID=oldSeasonId;
 
-  try{
-    // Capture final tables before changing the season.
-    const domesticTables={};
-    MAJOR_LEAGUES.forEach(l=>domesticTables[l]=table(l));
-    domesticTables.Championship=table('Championship');
+   step='calculating the final tables';
+   const domesticTables={};MAJOR_LEAGUES.forEach(l=>domesticTables[l]=table(l));domesticTables.Championship=table('Championship');
+   const championCompetitions=[...MAJOR_LEAGUES,'Championship'];
+   const champions=championCompetitions.map(competition=>({season:live.name||`Season ${nextOrder-1}`,seasonId:oldSeasonId,competition,winner:domesticTables[competition]?.[0]?.team||'',date:new Date().toISOString().slice(0,10),type:'League Champion'})).filter(x=>x.winner);
 
-    // Every domestic champion is permanently written to Hall of Fame.
-    // Championship is included because it is also a league in this game.
-    const championCompetitions=[...MAJOR_LEAGUES,'Championship'];
-    const champions=championCompetitions.map(competition=>({
-      season:oldSeason.name||`Season ${nextOrder-1}`,
-      seasonId:oldSeasonId,
-      competition,
-      winner:domesticTables[competition]?.[0]?.team||'',
-      date:new Date().toISOString().slice(0,10),
-      type:'League Champion'
-    })).filter(x=>x.winner);
+   // Apply the manually selected movement, not table position.
+   const currentRoster={};
+   MAJOR_LEAGUES.forEach(league=>currentRoster[league]=teamObjects(league).slice(0,8).map(t=>t.name));
+   currentRoster.Championship=teamObjects('Championship').slice(0,8).map(t=>t.name);
+   const nextRosters={};
+   MAJOR_LEAGUES.forEach(league=>{
+     const drop=relegated.find(x=>x.from===league)?.team;
+     const add=promoted.find(x=>x.to===league)?.team;
+     if(!drop||!add)throw new Error(`MOVEMENT_INCOMPLETE_${league}`);
+     if(!currentRoster[league].includes(drop))throw new Error(`RELEGATED_TEAM_NOT_FOUND_${league}`);
+     if(!currentRoster.Championship.includes(add))throw new Error(`PROMOTED_TEAM_NOT_FOUND_${league}`);
+     nextRosters[league]=currentRoster[league].filter(x=>x!==drop);
+     if(nextRosters[league].includes(add))throw new Error(`PROMOTED_TEAM_ALREADY_IN_${league}`);
+     nextRosters[league].push(add);
+     if(nextRosters[league].length!==8)throw new Error(`INVALID_ROSTER_${league}`);
+   });
+   const promotedNames=new Set(promoted.map(x=>x.team));
+   nextRosters.Championship=currentRoster.Championship.filter(x=>!promotedNames.has(x));
+   relegated.forEach(x=>{if(!nextRosters.Championship.includes(x.team))nextRosters.Championship.push(x.team);});
+   if(nextRosters.Championship.length!==8)throw new Error('INVALID_ROSTER_CHAMPIONSHIP');
 
-    // Promotion/relegation: Championship #1-4 -> the four major leagues; #8 of each major league -> Championship.
-    const promoted=domesticTables.Championship.slice(0,4).map((r,i)=>({team:r.team,to:MAJOR_LEAGUES[i],rank:i+1}));
-    const relegated=MAJOR_LEAGUES.map(league=>({team:domesticTables[league][7]?.team||'',from:league})).filter(x=>x.team);
+   const uclTeams=MAJOR_LEAGUES.flatMap(league=>domesticTables[league].slice(0,4).map((r,i)=>({name:r.team,league,rank:i+1})));
+   if(uclTeams.length!==16)throw new Error('UCL_REQUIRES_16_TEAMS');
+   const uclGroups=buildUCLGroups(uclTeams);
+   const year=String(Number(live.year||new Date().getUTCFullYear())+1),theme=((nextOrder-1)%6)+1;
 
-    const nextRosters={};
-    MAJOR_LEAGUES.forEach(league=>{
-      const old=domesticTables[league].map(r=>r.team);
-      const drop=domesticTables[league][7]?.team;
-      const add=promoted.find(x=>x.to===league)?.team;
-      nextRosters[league]=old.filter(x=>x!==drop);
-      if(add)nextRosters[league].push(add);
-      nextRosters[league]=nextRosters[league].slice(0,8);
-    });
-    const chOld=domesticTables.Championship.map(r=>r.team);
-    const promotedNames=new Set(promoted.map(x=>x.team));
-    nextRosters.Championship=chOld.filter(x=>!promotedNames.has(x));
-    relegated.forEach(x=>{if(!nextRosters.Championship.includes(x.team))nextRosters.Championship.push(x.team);});
-    nextRosters.Championship=nextRosters.Championship.slice(0,8);
+   // Create the next season as a non-current setup page first. If a later step fails, the old season remains current.
+   step='creating the new season page';
+   await db.collection('seasons').doc(newId).set({id:newId,name:newName,year,status:'Ongoing',order:nextOrder,theme,current:false,activeCompetitions:ALL_COMPETITIONS,uclTeams,uclGroups,promoted,relegated,previousSeasonId:oldSeasonId,manualMovement:{promoted:[],relegated:[]},createdAt:firebase.firestore.FieldValue.serverTimestamp()});
 
-    // UCL for the new season is the 16 qualifiers from the completed season.
-    const uclTeams=MAJOR_LEAGUES.flatMap(league=>domesticTables[league].slice(0,4).map((r,i)=>({name:r.team,league,rank:i+1})));
-    const uclGroups=buildUCLGroups(uclTeams);
+   const catalogByName=new Map(catalog.map(x=>[x.name,x]));
+   const nextTeamDocs=[];Object.entries(nextRosters).forEach(([competition,names])=>names.forEach(name=>{const base=catalogByName.get(name)||{};nextTeamDocs.push({id:`${newId}__${name.toLowerCase().replace(/[^a-z0-9]+/g,'-')}`,name,competition,competitions:[competition],logo:base.logo||'',enabled:true,seasonId:newId});}));
+   step='saving the new season teams';await batchWriteDocs('teams',nextTeamDocs);
 
-    const year=String(Number(oldSeason.year||new Date().getUTCFullYear())+1);
-    const theme=((nextOrder-1)%6)+1;
-    await db.collection('seasons').doc(newId).set({
-      id:newId,name:newName,year,status:'Ongoing',order:nextOrder,theme,current:true,
-      activeCompetitions:ALL_COMPETITIONS,uclTeams,uclGroups,
-      promoted,relegated,previousSeasonId:oldSeasonId,
-      createdAt:firebase.firestore.FieldValue.serverTimestamp()
-    });
+   const nextPlayers=currentPlayers.filter(p=>p.status!=='cancelled').map(p=>{const movedCompetition=Object.entries(nextRosters).find(([,names])=>names.includes(p.club))?.[0]||p.competition;return {...p,id:`${newId}__${String(p.playerId||p.uid||p.id).replace(/[^a-zA-Z0-9_-]/g,'_')}`,seasonId:newId,competition:movedCompetition,status:'active',previousSeasonId:oldSeasonId};});
+   step='carrying members into the new season';await batchWriteDocs('players',nextPlayers);
 
-    // Archive old season.
-    await db.collection('seasons').doc(oldSeasonId).set({current:false,status:'Completed'},{merge:true});
+   const hallDocs=champions.map(x=>({id:`${oldSeasonId}__${x.competition.toLowerCase().replace(/[^a-z0-9]+/g,'-')}__champion`,...x}));
+   step='saving champions to Hall of Fame';if(hallDocs.length)await batchWriteDocs('hallOfFame',hallDocs);
 
-    // Build the next season's club roster.
-    const catalogByName=new Map(catalog.map(x=>[x[0],x]));
-    const nextTeamDocs=[];
-    Object.entries(nextRosters).forEach(([competition,names])=>{
-      names.forEach(name=>{
-        const base=catalogByName.get(name)||[];
-        nextTeamDocs.push({
-          id:`${newId}__${name.toLowerCase().replace(/[^a-z0-9]+/g,'-')}`,
-          name,competition,competitions:[competition],logo:base[2]||'',enabled:true,seasonId:newId
-        });
-      });
-    });
-    // UCL participants are represented through season.uclTeams, not as domestic clubs.
-    await batchWriteDocs('teams',nextTeamDocs);
+   const start=new Date();start.setUTCDate(start.getUTCDate()+7);const startDate=start.toISOString().slice(0,10);const allNewFixtures=[];
+   MAJOR_LEAGUES.concat(['Championship']).forEach(comp=>makeRoundRobinGames(nextRosters[comp],startDate).forEach(x=>allNewFixtures.push({id:null,competition:comp,homeTeam:x.home,awayTeam:x.away,round:x.round,date:x.date,seasonId:newId})));
+   buildUCLFixtures(uclGroups,startDate).forEach(x=>allNewFixtures.push({...x,id:null,seasonId:newId}));
+   step='generating fresh fixtures';await batchWriteDocs('fixtures',allNewFixtures);
 
-    // Carry every registered member into the new season with the same club.
-    const oldPlayers=(state.players||[]).filter(p=>p.status!=='cancelled');
-    const nextPlayers=oldPlayers.map(p=>{
-      const movedCompetition=Object.entries(nextRosters).find(([,names])=>names.includes(p.club))?.[0] || p.competition;
-      return {
-        ...p,
-        id:`${newId}__${p.playerId||p.uid||p.id}`,
-        seasonId:newId,
-        competition:movedCompetition,
-        status:'active',
-        previousSeasonId:oldSeasonId
-      };
-    });
-    await batchWriteDocs('players',nextPlayers);
-
-    // Store champions in Hall of Fame without touching previous records.
-    const hallDocs=champions.map(x=>({
-      id:`${oldSeasonId}__${x.competition.toLowerCase().replace(/[^a-z0-9]+/g,'-')}__champion`,
-      ...x
-    }));
-    if(hallDocs.length) await batchWriteDocs('hallOfFame',hallDocs);
-
-    // Generate fresh domestic schedules automatically.
-    const start=new Date(); start.setUTCDate(start.getUTCDate()+7);
-    const startDate=start.toISOString().slice(0,10);
-    const allFixtures=[];
-    MAJOR_LEAGUES.concat(['Championship']).forEach(comp=>{
-      makeRoundRobinGames(nextRosters[comp],startDate).forEach(x=>allFixtures.push({
-        id:null,competition:comp,homeTeam:x.home,awayTeam:x.away,round:x.round,date:x.date,seasonId:newId
-      }));
-    });
-    buildUCLFixtures(uclGroups,startDate).forEach(x=>allFixtures.push({...x,id:null,seasonId:newId}));
-    await batchWriteDocs('fixtures',allFixtures);
-
-    // Switch the UI to the new page/season.
-    SEASON_ID=newId;
-    await loadData();
-    go('dashboard');
-    alert(`${newName} started successfully.\n\n• 5 leagues restarted with fresh fixtures\n• Members carried over\n• Previous champions saved to Hall of Fame\n• 16 UCL qualifiers carried over\n• Promotion/relegation applied\n• ${newName} is now active`);
-  }catch(e){
-    console.error('startNewSeason failed',e);
-    alert(`Could not start the new season.\n\n${e.message||e}`);
-  }
+   // Commit the season switch only after every new-season document has been written successfully.
+   step='activating the new season';
+   await db.collection('seasons').doc(oldSeasonId).set({current:false,status:'Completed'},{merge:true});
+   await db.collection('seasons').doc(newId).set({current:true,status:'Ongoing'},{merge:true});
+   SEASON_ID=newId;await loadData();go('dashboard');
+   alert(`${newName} started successfully.\n\n• Manual promotion/relegation applied\n• 5 leagues restarted with fresh fixtures\n• Members carried over\n• Previous champions saved to Hall of Fame\n• 16 UCL qualifiers carried over\n• Previous season remains available as history`);
+ }catch(e){
+   console.error('startNewSeason failed',e);
+   try{await db.collection('seasons').doc(newId).set({status:'Setup Failed',current:false,setupError:String(e.message||e),setupFailedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});}catch(_){ }
+   alert(`Could not start the new season.\n\nStep: ${step}\nError: ${e.message||e}\n\nThe previous season was kept active where possible.`);
+ }
 }
 window.startNewSeason=startNewSeason;
 
@@ -905,7 +916,7 @@ function adminSeason(c){
  <div class="season-book-grid">${state.seasons.map((x,i)=>`<article class="season-book-card ${x.id===SEASON_ID?'current':''}"><div class="season-page-no">PAGE ${i+1}</div><h3>${esc(x.name||'Season')}</h3><p>${esc(x.year||'')} • ${esc(x.status||'')}</p><button class="mini-btn" data-open-season="${esc(x.id)}">Open page →</button></article>`).join('')}</div>
  <div class="admin-form"><label>Season name<input id="seasonName" value="${esc(s.name||DEFAULT_SEASON)}" placeholder="Season name"></label><label>Status<select id="seasonStatus"><option ${s.status==='Upcoming'?'selected':''}>Upcoming</option><option ${s.status==='Ongoing'?'selected':''}>Ongoing</option><option ${s.status==='Completed'?'selected':''}>Completed</option></select></label><label>Year<input id="seasonYear" value="${esc(s.year||'2026')}" placeholder="Year"></label><label>Theme<select id="seasonTheme">${[1,2,3,4,5,6].map(n=>`<option value="${n}" ${(Number(s.theme||1)===n)?'selected':''}>Theme ${n}</option>`).join('')}</select></label><button class="primary" id="saveSeason">Save Page</button></div>`;
  c.querySelectorAll('[data-open-season]').forEach(b=>b.onclick=()=>switchSeason(b.dataset.openSeason).then(()=>adminTab('season')));
- $('saveSeason').onclick=async()=>{const active=s.activeCompetitions||ALL_COMPETITIONS;await adminSave('seasons',SEASON_ID,{name:$('seasonName').value.trim(),status:$('seasonStatus').value,year:$('seasonYear').value,theme:Number($('seasonTheme').value),current:true,activeCompetitions:active});await loadData();adminTab('season');};
+ $('saveSeason').onclick=async()=>{const active=s.activeCompetitions||ALL_COMPETITIONS;const live=currentSeasonRecord();const isCurrent=!!live&&live.id===SEASON_ID;await adminSave('seasons',SEASON_ID,{name:$('seasonName').value.trim(),status:$('seasonStatus').value,year:$('seasonYear').value,theme:Number($('seasonTheme').value),current:isCurrent,activeCompetitions:active});await loadData();adminTab('season');};
  $('newSeason').onclick=startNewSeason;
 }
 auth.onAuthStateChanged(async u=>{state.admin=!!u&&!u.isAnonymous;await loadData();});function adminResults(c){

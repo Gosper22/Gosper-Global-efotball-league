@@ -78,3 +78,8 @@ body[data-season-theme="3"]{--bg:#160c06;--sidebar:#211108;--panel:#28150b}
 body[data-season-theme="4"]{--bg:#100914;--sidebar:#170d20;--panel:#1d1028}
 body[data-season-theme="5"]{--bg:#06140f;--sidebar:#081b15;--panel:#0b241b}
 body[data-season-theme="6"]{--bg:#16070d;--sidebar:#210a13;--panel:#2a0d18}
+
+/* Manual season movement controls */
+.movement-card{display:flex;flex-direction:column;gap:14px}
+.movement-card label{display:grid;gap:7px;font-weight:700}
+.movement-card select{width:100%;padding:12px 14px;border:1px solid rgba(255,255,255,.14);border-radius:12px;background:rgba(255,255,255,.04);color:inherit;font:inherit}
