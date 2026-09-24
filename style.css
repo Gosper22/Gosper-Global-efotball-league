@@ -62,3 +62,19 @@ body[data-season-theme] .page-head h1,body[data-season-theme] .panel h2{transiti
 .season-book-card.current{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent-soft),0 16px 36px var(--season-glow)}
 .season-page-no{font-size:9px;letter-spacing:2px;color:var(--accent);font-weight:800;margin-bottom:12px}.season-book-card h3{margin:0 0 6px}.season-book-card p{color:var(--muted);font-size:11px;margin:0 0 15px}
 @media(max-width:760px){.season-switcher{margin-left:4px}.season-switcher select{max-width:92px}.top-left{gap:5px}.season-book-grid{grid-template-columns:1fr 1fr}}
+
+/* Season notebook page turn: switching seasons feels like opening the next paper page. */
+body.season-page-turn .app-shell{animation:seasonPageTurn .62s ease both}
+@keyframes seasonPageTurn{
+  0%{opacity:.45;transform:perspective(1200px) rotateY(-7deg) translateX(14px)}
+  55%{opacity:.78;transform:perspective(1200px) rotateY(2deg) translateX(-3px)}
+  100%{opacity:1;transform:perspective(1200px) rotateY(0) translateX(0)}
+}
+
+/* Each season has its own full CSS identity, not only an accent color. */
+body[data-season-theme="1"]{--bg:#070c05;--sidebar:#0d1409;--panel:#10180b}
+body[data-season-theme="2"]{--bg:#061016;--sidebar:#081a22;--panel:#0b202a}
+body[data-season-theme="3"]{--bg:#160c06;--sidebar:#211108;--panel:#28150b}
+body[data-season-theme="4"]{--bg:#100914;--sidebar:#170d20;--panel:#1d1028}
+body[data-season-theme="5"]{--bg:#06140f;--sidebar:#081b15;--panel:#0b241b}
+body[data-season-theme="6"]{--bg:#16070d;--sidebar:#210a13;--panel:#2a0d18}
