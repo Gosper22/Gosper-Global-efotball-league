@@ -58,6 +58,42 @@ function teamObjects(comp){
 function catalogObjects(){return catalog.slice();}
 const MAJOR_LEAGUES=['Premier League','LaLiga','Serie A','Bundesliga'];
 const ALL_COMPETITIONS=[...MAJOR_LEAGUES,'Championship','UCL'];
+const AFRICAN_CHAMPIONSHIP_CLUBS=catalog.filter(t=>t.competition==='Championship').map(t=>t.name);
+const AFRICAN_CHAMPIONSHIP_SET=new Set(AFRICAN_CHAMPIONSHIP_CLUBS);
+function isAfricanClub(name){return AFRICAN_CHAMPIONSHIP_SET.has(name);}
+function originalClubNamesFor(competition){return catalog.filter(t=>t.competition===competition).map(t=>t.name);}
+function repairedLeagueRosters(){
+  const rosters={};
+  const currentChamp=teamObjects('Championship').slice(0,8).map(t=>t.name);
+  MAJOR_LEAGUES.forEach(league=>{
+    const originals=originalClubNamesFor(league);
+    const current=teamObjects(league).slice(0,8).map(t=>t.name);
+    const keep=current.filter(name=>!isAfricanClub(name) && originals.includes(name));
+    const missing=originals.filter(name=>!keep.includes(name));
+    rosters[league]=[...keep,...missing].slice(0,8);
+  });
+  rosters.Championship=AFRICAN_CHAMPIONSHIP_CLUBS.slice(0,8);
+  return rosters;
+}
+function uclGroupStageComplete(){
+  const groups=['A','B','C','D'];
+  return groups.every(g=>{
+    const teams=(state.season?.uclGroups?.[g]||[]).map(x=>typeof x==='string'?x:x.name).filter(Boolean);
+    if(teams.length!==4)return false;
+    return uclGroupTable(g).length===4 && uclGroupTable(g).every(r=>r.mp>=6);
+  });
+}
+function uclKnockoutPairings(){
+  const rank={};
+  ['A','B','C','D'].forEach(g=>rank[g]=uclGroupTable(g).slice(0,2));
+  if(!['A','B','C','D'].every(g=>rank[g].length===2))return [];
+  return [
+    {id:'QF1',label:'Quarter-final 1',home:rank.A[0].team,away:rank.B[1].team},
+    {id:'QF2',label:'Quarter-final 2',home:rank.B[0].team,away:rank.A[1].team},
+    {id:'QF3',label:'Quarter-final 3',home:rank.C[0].team,away:rank.D[1].team},
+    {id:'QF4',label:'Quarter-final 4',home:rank.D[0].team,away:rank.C[1].team}
+  ];
+}
 function qualifiedUCLTeams(){
  const stored=Array.isArray(state.season?.uclTeams)?state.season.uclTeams:[];
  if(stored.length===16)return stored;
@@ -174,10 +210,25 @@ function renderUclGroups(){
  const groups=['A','B','C','D'];
  const hasGroups=groups.some(g=>Array.isArray(state.season?.uclGroups?.[g])&&state.season.uclGroups[g].length);
  standard.hidden=true; box.hidden=false;
+ const complete=uclGroupStageComplete();
+ const savedKnockout=Array.isArray(state.season?.uclKnockout)?state.season.uclKnockout:[];
+ const pairings=savedKnockout.length?savedKnockout:(complete?uclKnockoutPairings():[]);
  box.innerHTML=groups.map(g=>{
    const rows=uclGroupTable(g);
    return `<div class="tool-card"><h3>GROUP ${g}</h3><div class="table-wrap"><table class="standings-table"><thead><tr><th>#</th><th>CLUB</th><th>MP</th><th>W</th><th>D</th><th>L</th><th>GD</th><th>PTS</th></tr></thead><tbody>${rows.length?rows.map((r,i)=>`<tr><td><b>${i+1}</b></td><td><div class="team-cell">${logo(r.team,true)}<b>${esc(r.team)}</b></div></td><td>${r.mp}</td><td>${r.w}</td><td>${r.d}</td><td>${r.l}</td><td>${r.gd}</td><td><b>${r.pts}</b></td></tr>`).join(''):'<tr><td colspan="8" class="empty">No teams assigned.</td></tr>'}</tbody></table></div><p class="muted" style="margin-top:10px">${hasGroups?`Group ${g} • ${rows.length} clubs • Home & Away`: 'UCL groups have not been generated yet.'}</p></div>`;
- }).join('');
+ }).join('')+
+ `<div class="tool-card ucl-knockout-cta" style="grid-column:1/-1;text-align:center">
+   <h3>UCL Knockout Stage</h3>
+   <p class="muted">${complete?'All four groups have completed 6 matches per club. The top 2 from each group qualify for the quarter-finals.':'The knockout stage unlocks after every club has played 6 group-stage matches.'}</p>
+   <button class="primary" id="goUclKnockout" ${complete?'':'disabled'}>Go to Knockout →</button>
+ </div>`;
+ const btn=$('goUclKnockout');
+ if(btn)btn.onclick=()=>{
+   if(!complete)return;
+   const bracket=pairings.length?pairings:uclKnockoutPairings();
+   box.innerHTML=`<div class="tool-card" style="grid-column:1/-1"><div class="panel-head"><div><p class="eyebrow">UEFA CHAMPIONS LEAGUE</p><h2>Quarter-finals</h2><p class="muted">Top 2 from each group after 6 matches. Quarter-final ties are two-legged.</p></div><button class="text-btn" id="backToUclGroups">← Back to Groups</button></div><div class="admin-grid">${bracket.map(q=>`<div class="tool-card"><p class="eyebrow">${esc(q.label||q.id)}</p><div class="fixture-team" style="justify-content:center"><strong>${logo(q.home,true)} ${esc(q.home)}</strong></div><div class="fixture-score" style="text-align:center"><b>vs</b></div><div class="fixture-team" style="justify-content:center"><strong>${logo(q.away,true)} ${esc(q.away)}</strong></div></div>`).join('')}</div></div>`;
+   $('backToUclGroups').onclick=renderUclGroups;
+ };
 }
 function renderStandings(){
  const c=$('standingsCompetition')?.value||'Premier League';
@@ -555,7 +606,30 @@ function adminCompetitions(c){
 }
 function adminTeams(c){
  const all=catalogObjects();
- c.innerHTML=`<div class="admin-heading"><div><p class="eyebrow">CLUB CONTROL</p><h2>Official club pool</h2><p>Original structure: 8 clubs in each major league and 8 African clubs in Championship. Team logos below come directly from the original club catalog.</p></div><div class="admin-actions"><button class="primary" id="restoreOriginalClubs">↩ Restore Original Clubs</button><button class="primary" id="applyClubStructure">Save Club Availability</button></div></div><div class="admin-control-card"><p class="muted"><b>Restore Original Clubs</b> removes promoted/relegated club records from the selected season, restores the original 40 clubs, resets their original competitions and restores every original logo. It does not delete previous seasons.</p></div><div class="admin-team-grid">${all.map(t=>{const saved=state.teams.find(x=>x.name===t.name)||{};return `<div class="admin-team-card"><div class="admin-team-main">${logo(t.name)}<div><b>${esc(t.name)}</b><small>${esc(t.competition)}</small></div></div><div class="comp-checks"><label><input type="checkbox" checked disabled> ${esc(t.competition)}</label><label class="enable-check"><input type="checkbox" data-team-enabled="${esc(t.name)}" ${saved.enabled!==false?'checked':''}> Available</label></div></div>`}).join('')}</div>`;
+ c.innerHTML=`<div class="admin-heading"><div><p class="eyebrow">CLUB CONTROL</p><h2>Official club pool</h2><p>Original structure: 8 clubs in each major league and 8 African clubs in Championship. Team logos below come directly from the original club catalog.</p></div><div class="admin-actions"><button class="primary" id="repairAfricanClubs">↩ Relegate African Clubs</button><button class="primary" id="restoreOriginalClubs">↩ Restore Original Clubs</button><button class="primary" id="applyClubStructure">Save Club Availability</button></div></div><div class="admin-control-card"><p class="muted"><b>Restore Original Clubs</b> removes promoted/relegated club records from the selected season, restores the original 40 clubs, resets their original competitions and restores every original logo. It does not delete previous seasons.</p></div><div class="admin-team-grid">${all.map(t=>{const saved=state.teams.find(x=>x.name===t.name)||{};return `<div class="admin-team-card"><div class="admin-team-main">${logo(t.name)}<div><b>${esc(t.name)}</b><small>${esc(t.competition)}</small></div></div><div class="comp-checks"><label><input type="checkbox" checked disabled> ${esc(t.competition)}</label><label class="enable-check"><input type="checkbox" data-team-enabled="${esc(t.name)}" ${saved.enabled!==false?'checked':''}> Available</label></div></div>`}).join('')}</div>`;
+ $('repairAfricanClubs').onclick=async()=>{
+   if(!state.admin)return alert('Admin access required.');
+   if(!confirm('Repair African club placements for the current season?\n\nAll 8 African Championship clubs will be removed from the four major leagues. Missing original European clubs will be restored to their correct league with their catalog logos. Championship will contain exactly the 8 African clubs.'))return;
+   try{
+     const live=currentSeasonRecord(); const targetId=live?.id||SEASON_ID;
+     const allTeams=await getAllStrict('teams');
+     const current=allTeams.filter(t=>!t.seasonId?(targetId==='season-1'):t.seasonId===targetId);
+     const rosters=repairedLeagueRosters();
+     const wanted=new Map();
+     [...MAJOR_LEAGUES,'Championship'].forEach(comp=>rosters[comp].forEach(name=>{
+       const base=catalog.find(t=>t.name===name);
+       wanted.set(name,{id:`${targetId}__${name.toLowerCase().replace(/[^a-z0-9]+/g,'-')}`,name,competition:comp,competitions:[comp],logo:base?.logo||'',enabled:true,seasonId:targetId});
+     }));
+     const batch=db.batch();
+     current.forEach(t=>{if(!wanted.has(t.name))batch.delete(db.collection('teams').doc(t.id));});
+     wanted.forEach(doc=>batch.set(db.collection('teams').doc(doc.id),doc,{merge:true}));
+     await batch.commit();
+     await adminSave('seasons',targetId,{uclTeams:[],uclGroups:{A:[],B:[],C:[],D:[]},uclKnockout:[]});
+     await loadData();
+     alert('African club placement repaired.\n\n✓ All African clubs are in Championship\n✓ African clubs removed from major leagues\n✓ Missing original European clubs restored with original logos\n✓ UCL group/knockout setup reset');
+     adminTab('teams');
+   }catch(e){console.error(e);alert(`Could not repair club placements.\n\nError: ${e.message||e}`);}
+ };
  $('restoreOriginalClubs').onclick=async()=>{
    if(!state.admin)return alert('Admin access required.');
    const live=currentSeasonRecord();
@@ -607,6 +681,7 @@ function adminTeams(c){
        relegated:[],
        uclTeams:[],
        uclGroups:emptyGroups,
+       uclKnockout:[],
        clubsRestoredAt:firebase.firestore.FieldValue.serverTimestamp()
      });
 
@@ -719,7 +794,7 @@ function adminUCL(c){
  const groupsDocId=`${SEASON_ID}_groups`;
  const savedGroups=state.season?.uclGroups||{};
  const groups=['A','B','C','D'].map(g=>({name:g,teams:Array.isArray(savedGroups[g])?savedGroups[g]:[]}));
- c.innerHTML=`<div class="admin-heading"><div><p class="eyebrow">UEFA CHAMPIONS LEAGUE</p><h2>UCL Group Stage</h2><p>Top 4 teams from every major league qualify. Generate 4 groups of 4, then generate home & away group fixtures.</p></div><div class="admin-actions"><button class="primary" id="generateUclGroups">Generate UCL Groups</button><button class="primary" id="generateUclFixtures">Generate UCL Fixtures</button></div></div>
+ c.innerHTML=`<div class="admin-heading"><div><p class="eyebrow">UEFA CHAMPIONS LEAGUE</p><h2>UCL Group Stage</h2><p>Top 4 teams from every major league qualify. Generate 4 groups of 4, then play 6 group matches per club before moving to the quarter-finals.</p></div><div class="admin-actions"><button class="primary" id="generateUclGroups">Generate UCL Groups</button><button class="primary" id="generateUclFixtures">Generate UCL Fixtures (6 matches each)</button><button class="primary" id="generateUclKnockout">Generate Knockout</button></div></div>
  <div class="admin-control-card"><div><p class="eyebrow">QUALIFIED TEAMS</p><h3>${qualified.length}/16 qualified</h3><p class="muted">Qualification is calculated from the current domestic standings.</p></div></div>
  <div class="admin-grid">${groups.map(g=>`<div class="tool-card"><h3>GROUP ${g.name}</h3><div class="admin-list">${g.teams.length?g.teams.map((t,i)=>`<div class="admin-item"><b>${i+1}. ${esc(t.name||t)}</b><span>${esc(t.league||'')}</span></div>`).join(''):'<p class="muted">No teams assigned yet.</p>'}</div></div>`).join('')}</div>`;
  $('generateUclGroups').onclick=async()=>{
@@ -736,7 +811,7 @@ function adminUCL(c){
      if(pair[1])next[g2].push(pair[1]);
      li++;
    }
-   if(!confirm('Generate new UCL groups from the current top 2 teams of every major league? Existing UCL group assignments will be replaced.'))return;
+   if(!confirm('Generate new UCL groups from the current top 4 teams of every major league? Existing UCL group assignments will be replaced.'))return;
    try{await adminSave('seasons',SEASON_ID,{uclGroups:next,uclGroupsGeneratedAt:firebase.firestore.FieldValue.serverTimestamp()});alert('UCL groups generated successfully.');adminTab('ucl');}
    catch(e){console.error(e);alert('Could not generate UCL groups. Check Firestore Rules.');}
  };
@@ -762,6 +837,25 @@ function adminUCL(c){
      for(let i=0;i<out.length;i+=450){const batch=db.batch();out.slice(i,i+450).forEach(x=>{const ref=db.collection('fixtures').doc();batch.set(ref,{competition:'UCL',group:x.group,homeTeam:x.home,awayTeam:x.away,round:`Matchday ${x.round}`,date:'',seasonId:SEASON_ID,stage:'Group Stage',createdAt:firebase.firestore.FieldValue.serverTimestamp()});});await batch.commit();}
      await loadData();alert(`${out.length} UCL group-stage fixtures generated.`);adminTab('ucl');
    }catch(e){console.error(e);alert('Could not generate UCL fixtures. Check Firestore Rules.');}
+ };
+ $('generateUclKnockout').onclick=async()=>{
+   if(!uclGroupStageComplete())return alert('The UCL group stage is not complete. Every club must have played 6 matches first.');
+   const pairings=uclKnockoutPairings();
+   if(pairings.length!==4)return alert('Could not determine the 8 quarter-finalists.');
+   if(!confirm('Generate the UCL quarter-finals from the top 2 of each group? Existing knockout fixtures will be rebuilt.'))return;
+   try{
+     const existing=state.fixtures.filter(f=>compOf(f)==='UCL'&&f.stage==='Quarter-finals');
+     for(let i=0;i<existing.length;i+=450){const batch=db.batch();existing.slice(i,i+450).forEach(f=>batch.delete(db.collection('fixtures').doc(f.id)));await batch.commit();}
+     const out=[];
+     pairings.forEach((q,qi)=>{
+       out.push({group:'QF'+(qi+1),home:q.home,away:q.away,leg:1});
+       out.push({group:'QF'+(qi+1),home:q.away,away:q.home,leg:2});
+     });
+     for(let i=0;i<out.length;i+=450){const batch=db.batch();out.slice(i,i+450).forEach(x=>{const ref=db.collection('fixtures').doc();batch.set(ref,{competition:'UCL',group:x.group,homeTeam:x.home,awayTeam:x.away,round:`Quarter-final Leg ${x.leg}`,date:'',seasonId:SEASON_ID,stage:'Quarter-finals',createdAt:firebase.firestore.FieldValue.serverTimestamp()});});await batch.commit();}
+     await adminSave('seasons',SEASON_ID,{uclKnockout:pairings,uclKnockoutGeneratedAt:firebase.firestore.FieldValue.serverTimestamp()});
+     alert('UCL quarter-finals generated: 8 teams, 4 ties, 2 legs each.');
+     adminTab('ucl');
+   }catch(e){console.error(e);alert('Could not generate the UCL knockout stage. Check Firestore Rules.');}
  };
 }
 function adminPromotion(c){
@@ -930,9 +1024,7 @@ async function startNewSeason(){
    const champions=championCompetitions.map(competition=>({season:live.name||`Season ${nextOrder-1}`,seasonId:oldSeasonId,competition,winner:domesticTables[competition]?.[0]?.team||'',date:new Date().toISOString().slice(0,10),type:'League Champion'})).filter(x=>x.winner);
 
    // Apply the manually selected movement, not table position.
-   const currentRoster={};
-   MAJOR_LEAGUES.forEach(league=>currentRoster[league]=teamObjects(league).slice(0,8).map(t=>t.name));
-   currentRoster.Championship=teamObjects('Championship').slice(0,8).map(t=>t.name);
+   const currentRoster=repairedLeagueRosters();
    const nextRosters={};
    MAJOR_LEAGUES.forEach(league=>{
      const drop=relegated.find(x=>x.from===league)?.team;
@@ -957,7 +1049,7 @@ async function startNewSeason(){
 
    // Create the next season as a non-current setup page first. If a later step fails, the old season remains current.
    step='creating the new season page';
-   await db.collection('seasons').doc(newId).set({id:newId,name:newName,year,status:'Ongoing',order:nextOrder,theme,current:false,activeCompetitions:ALL_COMPETITIONS,uclTeams,uclGroups,promoted,relegated,previousSeasonId:oldSeasonId,manualMovement:{promoted:[],relegated:[]},createdAt:firebase.firestore.FieldValue.serverTimestamp()});
+   await db.collection('seasons').doc(newId).set({id:newId,name:newName,year,status:'Ongoing',order:nextOrder,theme,current:false,activeCompetitions:ALL_COMPETITIONS,uclTeams,uclGroups,uclKnockout:[],promoted,relegated,previousSeasonId:oldSeasonId,manualMovement:{promoted:[],relegated:[]},createdAt:firebase.firestore.FieldValue.serverTimestamp()});
 
    const catalogByName=new Map(catalog.map(x=>[x.name,x]));
    const nextTeamDocs=[];Object.entries(nextRosters).forEach(([competition,names])=>names.forEach(name=>{const base=catalogByName.get(name)||{};nextTeamDocs.push({id:`${newId}__${name.toLowerCase().replace(/[^a-z0-9]+/g,'-')}`,name,competition,competitions:[competition],logo:base.logo||'',enabled:true,seasonId:newId});}));
@@ -979,7 +1071,7 @@ async function startNewSeason(){
    await db.collection('seasons').doc(oldSeasonId).set({current:false,status:'Completed'},{merge:true});
    await db.collection('seasons').doc(newId).set({current:true,status:'Ongoing'},{merge:true});
    SEASON_ID=newId;await loadData();go('dashboard');
-   alert(`${newName} started successfully.\n\n• Manual promotion/relegation applied\n• 5 leagues restarted with fresh fixtures\n• Members carried over\n• Previous champions saved to Hall of Fame\n• 16 UCL qualifiers carried over\n• Previous season remains available as history`);
+   alert(`${newName} started successfully.\n\n• Manual promotion/relegation applied\n• 5 leagues restarted with fresh fixtures\n• Members carried over\n• Previous champions saved to Hall of Fame\n• 16 UCL qualifiers carried over\n• African clubs forced back to Championship and original European clubs restored\n• Previous season remains available as history`);
  }catch(e){
    console.error('startNewSeason failed',e);
    try{await db.collection('seasons').doc(newId).set({status:'Setup Failed',current:false,setupError:String(e.message||e),setupFailedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});}catch(_){ }
