@@ -283,7 +283,7 @@ function renderStandings(){
  const rows=table(c);
  $('standingsTable').innerHTML=rows.length?rows.map(rowHtml).join(''):`<tr><td colspan="10" class="empty">No results published yet.</td></tr>`;
 }
-function fixtureHtml(f,admin=false){const [h,a]=teamsInFixture(f),s=score(f);return `<article class="fixture-card"><div class="fixture-meta"><span class="competition-pill">${esc(compOf(f))}</span><span>${dateText(f.date||f.kickoff)}</span><span>${esc(f.round||'Match')}</span></div><div class="fixture-teams"><div class="fixture-team">${logo(h)}<strong>${esc(h)}</strong></div><div class="fixture-score"><b>${s?`${s.h} - ${s.a}`:'VS'}</b><small>${s?'FULL TIME':'UPCOMING'}</small></div><div class="fixture-team">${logo(a)}<strong>${esc(a)}</strong></div></div>${admin?`<div class="fixture-admin-actions"><button class="mini-btn" onclick="editFixture('${f.id}')">Edit</button><button class="mini-btn danger" onclick="deleteFixture('${f.id}')">Delete</button></div>`:''}</article>`;}
+function fixtureHtml(f,admin=false){const [h,a]=teamsInFixture(f),s=score(f);return `<article class="fixture-card"><div class="fixture-meta"><span class="competition-pill">${esc(compOf(f))}</span><span>${dateText(f.date||f.kickoff)}</span><span>${esc(f.round||'Match')}</span></div><div class="fixture-teams"><div class="fixture-team">${logo(h)}<strong>${esc(h)}</strong></div><div class="fixture-score"><b>${s?`${s.h} - ${s.a}`:'VS'}</b><small>${s?'FULL TIME':'UPCOMING'}</small></div><div class="fixture-team">${logo(a)}<strong>${esc(a)}</strong></div></div>${admin?`<div class="fixture-admin-actions"><button class="mini-btn danger" onclick="deleteFixture('${f.id}')">Delete Fixture</button></div>`:''}</article>`;}
 function renderFixtures(){
  let fs=state.fixtures.filter(f=>{const c=compOf(f);const [h,a]=teamsInFixture(f);const pool=c==='FA Cup'?faCupPool():teamObjects(c).map(t=>t.name);return pool.includes(h)&&pool.includes(a);});
  const c=$('fixtureCompetition')?.value||'all',st=$('fixtureStatus')?.value||'all';
@@ -764,6 +764,25 @@ function adminFixtures(c){
  $('generateFixtures').onclick=()=>generateFixtures($('genComp').value);
  $('deleteAllFixtures').onclick=deleteAllFixtures;
  $('addFixture').onclick=async()=>{const id=db.collection('fixtures').doc().id;await adminSave('fixtures',id,{competition:$('fxComp').value,homeTeam:$('fxHome').value.trim(),awayTeam:$('fxAway').value.trim(),date:$('fxDate').value,round:$('fxRound').value||'Matchday',seasonId:SEASON_ID});adminTab('fixtures');};
+}
+async function deleteFixture(fixtureId){
+ if(!fixtureId){alert('Fixture ID is missing.');return;}
+ const fixture=state.fixtures.find(f=>f.id===fixtureId);
+ if(!fixture){alert('Fixture not found.');return;}
+ const [home,away]=teamsInFixture(fixture);
+ const competition=compOf(fixture);
+ const round=fixture.round||'Match';
+ const label=`${competition} • ${round}\n${home} vs ${away}`;
+ if(!confirm(`Delete this fixture only?\n\n${label}\n\nOther fixtures will not be affected.`))return;
+ try{
+  await db.collection('fixtures').doc(fixtureId).delete();
+  await loadData();
+  adminTab('fixtures');
+  alert('Fixture deleted successfully.');
+ }catch(e){
+  console.error(e);
+  alert('Could not delete this fixture. Check admin permissions and try again.');
+ }
 }
 async function deleteAllFixtures(){
  if(!state.fixtures.length){alert('There are no fixtures to delete.');return;}
