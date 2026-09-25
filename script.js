@@ -784,6 +784,19 @@ async function deleteFixture(id){
 async function deleteAllFixtures(){
  if(!state.fixtures.length){alert('There are no fixtures to delete.');return;}
  if(!confirm(`Delete ALL ${state.fixtures.length} fixtures from every competition? This cannot be undone.`))return;
+
+async function deleteLeagueFixtures(comp){
+  const fixtures = state.fixtures.filter(f => compOf(f) === comp);
+  if(!fixtures.length){ alert(`No ${comp} fixtures found.`); return; }
+  if(!confirm(`Delete ALL ${comp} fixtures only?`)) return;
+  const batch = db.batch();
+  fixtures.forEach(f => batch.delete(db.collection('fixtures').doc(f.id)));
+  await batch.commit();
+  await loadData();
+  alert(`${comp} fixtures deleted successfully.`);
+  adminTab('fixtures');
+}
+
  try{
   const refs=state.fixtures.map(f=>db.collection('fixtures').doc(f.id));
   for(let i=0;i<refs.length;i+=450){
