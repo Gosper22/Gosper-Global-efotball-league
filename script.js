@@ -23,7 +23,7 @@ const catalog=[
 // GERMANY — TOP 6
 ['Bayern Munich','Bundesliga','https://images.fotmob.com/image_resources/logo/teamlogo/9823.png'],['Borussia Dortmund','Bundesliga','https://images.fotmob.com/image_resources/logo/teamlogo/9789.png'],['Bayer Leverkusen','Bundesliga','https://images.fotmob.com/image_resources/logo/teamlogo/8178.png'],['RB Leipzig','Bundesliga','https://images.fotmob.com/image_resources/logo/teamlogo/178475.png'],['Eintracht Frankfurt','Bundesliga','https://images.fotmob.com/image_resources/logo/teamlogo/9810.png'],['VfB Stuttgart','Bundesliga','https://images.fotmob.com/image_resources/logo/teamlogo/10269.png'],['Wolfsburg','Bundesliga','https://images.fotmob.com/image_resources/logo/teamlogo/9830.png'],['Borussia Monchengladbach','Bundesliga','https://images.fotmob.com/image_resources/logo/teamlogo/9788.png'],
 // AFRICA CHAMPIONSHIP — exactly 8 clubs
-['Al Ahly','Championship','https://images.fotmob.com/image_resources/logo/teamlogo/10280.png'],['Zamalek','Championship','https://images.fotmob.com/image_resources/logo/teamlogo/10073.png'],['Esperance Tunis','Championship','https://images.fotmob.com/image_resources/logo/teamlogo/10072.png'],['Wydad Casablanca','Championship','https://images.fotmob.com/image_resources/logo/teamlogo/10071.png'],['Mamelodi Sundowns','Championship','https://images.fotmob.com/image_resources/logo/teamlogo/10070.png'],['Simba SC','Championship','https://images.fotmob.com/image_resources/logo/teamlogo/10069.png'],['Young Africans','Championship','https://images.fotmob.com/image_resources/logo/teamlogo/10068.png'],['TP Mazembe','Championship','https://images.fotmob.com/image_resources/logo/teamlogo/10067.png']
+['Al Ahly','Championship','https://images.fotmob.com/image_resources/logo/teamlogo/101745.png'],['Zamalek','Championship','https://images.fotmob.com/image_resources/logo/teamlogo/80591.png'],['Esperance Tunis','Championship','https://images.fotmob.com/image_resources/logo/teamlogo/8153.png'],['Wydad Casablanca','Championship','https://images.fotmob.com/image_resources/logo/teamlogo/102050.png'],['Mamelodi Sundowns','Championship','https://images.fotmob.com/image_resources/logo/teamlogo/4530.png'],['Simba SC','Championship','https://images.fotmob.com/image_resources/logo/teamlogo/165086.png'],['Young Africans','Championship','https://images.fotmob.com/image_resources/logo/teamlogo/165084.png'],['TP Mazembe','Championship','https://images.fotmob.com/image_resources/logo/teamlogo/128879.png']
 ].map(([name,competition,logo])=>({name,competition,logo}));
 
 const state={teams:[],players:[],fixtures:[],news:[],hall:[],season:null,seasons:[],admin:false,awards:[],comments:[],awardVotes:[]};
@@ -33,7 +33,16 @@ const initials=s=>String(s||'?').split(/\s+/).filter(Boolean).slice(0,2).map(x=>
 function dateObj(v){if(!v)return null; if(v.toDate)return v.toDate(); const d=new Date(v); return isNaN(d)?null:d;}
 function dateText(v){const d=dateObj(v);return d?d.toLocaleDateString(undefined,{day:'2-digit',month:'short',year:'numeric'}):'TBA';}
 function logoUrl(name){const t=state.teams.find(x=>x.name===name)||catalog.find(x=>x.name===name);return t?.logo||'';}
-function logo(name,small=false){const src=logoUrl(name);return src?`<span class="logo-box ${small?'sm':''}"><img class="team-logo ${small?'sm':''}" src="${src}" alt="${esc(name)} logo" loading="lazy" onerror="this.parentElement.classList.add('failed');this.remove()"><span class="logo-fallback ${small?'sm':''}">${esc(initials(name))}</span></span>`:`<span class="logo-box ${small?'sm':''}"><span class="logo-fallback ${small?'sm':''}">${esc(initials(name))}</span></span>`}
+function logo(name,small=false){
+  const src=logoUrl(name);
+  const cls=small?'sm':'';
+  if(!src)return `<span class="logo-box ${cls}"><span class="logo-fallback ${cls}">${esc(initials(name))}</span></span>`;
+  return `<span class="logo-box ${cls}">
+    <img class="team-logo ${cls}" src="${src}" alt="${esc(name)} logo" loading="lazy"
+      onerror="this.style.display='none';this.nextElementSibling.style.display='grid';">
+    <span class="logo-fallback ${cls}" style="display:none">${esc(initials(name))}</span>
+  </span>`;
+}
 
 function go(page){document.querySelectorAll('.page').forEach(x=>x.classList.toggle('active',x.dataset.pageContent===page));document.querySelectorAll('[data-page]').forEach(x=>x.classList.toggle('active',x.dataset.page===page));$('sidebar')?.classList.remove('open');window.scrollTo({top:0,behavior:'smooth'});if(page==='teams')renderTeams();if(page==='fixtures')renderFixtures();if(page==='standings')renderStandings();if(page==='players')renderPlayers();if(page==='hall')renderHall();if(page==='news')renderNews();if(page==='awards')renderAwards();if(page==='community')renderComments();}
 document.addEventListener('click',e=>{const b=e.target.closest('[data-page]');if(b)go(b.dataset.page);});
@@ -75,14 +84,16 @@ const AFRICAN_CHAMPIONSHIP_SET=new Set(AFRICAN_CHAMPIONSHIP_CLUBS);
 function isAfricanClub(name){return AFRICAN_CHAMPIONSHIP_SET.has(name);}
 function originalClubNamesFor(competition){return catalog.filter(t=>t.competition===competition).map(t=>t.name);}
 function repairedLeagueRosters(){
+  // Season 1/current-season repair rule:
+  // 1) No African club may remain in Premier League, LaLiga, Serie A or Bundesliga.
+  // 2) The eight African clubs belong only to Championship.
+  // 3) Each major league is restored to its original eight-club order from the catalog.
+  // 4) Every restored club gets its canonical catalog logo and competition.
+  // This deliberately ignores stale Firestore competition fields so an old promotion cannot
+  // move an African club back into a European league.
   const rosters={};
-  const currentChamp=teamObjects('Championship').slice(0,8).map(t=>t.name);
   MAJOR_LEAGUES.forEach(league=>{
-    const originals=originalClubNamesFor(league);
-    const current=teamObjects(league).slice(0,8).map(t=>t.name);
-    const keep=current.filter(name=>!isAfricanClub(name) && originals.includes(name));
-    const missing=originals.filter(name=>!keep.includes(name));
-    rosters[league]=[...keep,...missing].slice(0,8);
+    rosters[league]=originalClubNamesFor(league).slice(0,8);
   });
   rosters.Championship=AFRICAN_CHAMPIONSHIP_CLUBS.slice(0,8);
   return rosters;
@@ -651,10 +662,10 @@ function adminCompetitions(c){
 }
 function adminTeams(c){
  const all=catalogObjects();
- c.innerHTML=`<div class="admin-heading"><div><p class="eyebrow">CLUB CONTROL</p><h2>Official club pool</h2><p>Original structure: 8 clubs in each major league and 8 African clubs in Championship. Team logos below come directly from the original club catalog.</p></div><div class="admin-actions"><button class="primary" id="repairAfricanClubs">↩ Relegate African Clubs</button><button class="primary" id="restoreOriginalClubs">↩ Restore Original Clubs</button><button class="primary" id="applyClubStructure">Save Club Availability</button></div></div><div class="admin-control-card"><p class="muted"><b>Restore Original Clubs</b> removes promoted/relegated club records from the selected season, restores the original 40 clubs, resets their original competitions and restores every original logo. It does not delete previous seasons.</p></div><div class="admin-team-grid">${all.map(t=>{const saved=state.teams.find(x=>x.name===t.name)||{};return `<div class="admin-team-card"><div class="admin-team-main">${logo(t.name)}<div><b>${esc(t.name)}</b><small>${esc(t.competition)}</small></div></div><div class="comp-checks"><label><input type="checkbox" checked disabled> ${esc(t.competition)}</label><label class="enable-check"><input type="checkbox" data-team-enabled="${esc(t.name)}" ${saved.enabled!==false?'checked':''}> Available</label></div></div>`}).join('')}</div>`;
+ c.innerHTML=`<div class="admin-heading"><div><p class="eyebrow">CLUB CONTROL</p><h2>Official club pool</h2><p>Original structure: 8 clubs in each major league and 8 African clubs in Championship. Team logos below come directly from the original club catalog.</p></div><div class="admin-actions"><button class="primary" id="repairAfricanClubs">↩ FIX AFRICAN CLUBS</button><button class="primary" id="restoreOriginalClubs">↩ Restore Original Clubs</button><button class="primary" id="applyClubStructure">Save Club Availability</button></div></div><div class="admin-control-card"><p class="muted"><b>Restore Original Clubs</b> removes promoted/relegated club records from the selected season, restores the original 40 clubs, resets their original competitions and restores every original logo. It does not delete previous seasons.</p></div><div class="admin-team-grid">${all.map(t=>{const saved=state.teams.find(x=>x.name===t.name)||{};return `<div class="admin-team-card"><div class="admin-team-main">${logo(t.name)}<div><b>${esc(t.name)}</b><small>${esc(t.competition)}</small></div></div><div class="comp-checks"><label><input type="checkbox" checked disabled> ${esc(t.competition)}</label><label class="enable-check"><input type="checkbox" data-team-enabled="${esc(t.name)}" ${saved.enabled!==false?'checked':''}> Available</label></div></div>`}).join('')}</div>`;
  $('repairAfricanClubs').onclick=async()=>{
    if(!state.admin)return alert('Admin access required.');
-   if(!confirm('Repair African club placements for the current season?\n\nAll 8 African Championship clubs will be removed from the four major leagues. Missing original European clubs will be restored to their correct league with their catalog logos. Championship will contain exactly the 8 African clubs.'))return;
+   if(!confirm('FIX THE CURRENT SEASON CLUB STRUCTURE?\n\n• All African clubs will be returned to Championship.\n• Any African club found in Premier League, LaLiga, Serie A or Bundesliga will be removed from that league.\n• The correct original European clubs will replace them in the original league order.\n• All 40 clubs will receive their canonical logos.\n• Old promoted/relegated competition records will not be allowed to move them back.'))return;
    try{
      const live=currentSeasonRecord(); const targetId=live?.id||SEASON_ID;
      const allTeams=await getAllStrict('teams');
@@ -671,7 +682,7 @@ function adminTeams(c){
      await batch.commit();
      await adminSave('seasons',targetId,{uclTeams:[],uclGroups:{A:[],B:[],C:[],D:[]},uclKnockout:[]});
      await loadData();
-     alert('African club placement repaired.\n\n✓ All African clubs are in Championship\n✓ African clubs removed from major leagues\n✓ Missing original European clubs restored with original logos\n✓ UCL group/knockout setup reset');
+     alert('CURRENT SEASON CLUB STRUCTURE FIXED.\n\n✓ All 8 African clubs are back in Championship\n✓ African clubs removed from all 4 major leagues\n✓ Correct original European clubs restored in their original order\n✓ All club logos restored from the canonical catalog\n✓ Stale season movement/UCL qualification cleared');
      adminTab('teams');
    }catch(e){console.error(e);alert(`Could not repair club placements.\n\nError: ${e.message||e}`);}
  };
