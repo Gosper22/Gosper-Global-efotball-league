@@ -46,14 +46,26 @@ function openRegister(){ $('registerModal').hidden=false; populateClubPicker('')
 function closeRegister(){ $('registerModal').hidden=true; if($('registrationMsg')){$('registrationMsg').textContent='';$('registrationMsg').className='form-msg';} }
 function teamCompetitions(t){return Array.isArray(t.competitions)&&t.competitions.length?t.competitions:(t.competition?[t.competition]:[])}
 function isCompActive(comp){const a=state.season?.activeCompetitions;return !Array.isArray(a)||!a.length||a.includes(comp)}
+function canonicalRoster(comp){
+  if(comp==='Championship') return AFRICAN_CHAMPIONSHIP_CLUBS.slice();
+  if(MAJOR_LEAGUES.includes(comp)) return originalClubNamesFor(comp);
+  return [];
+}
 function teamObjects(comp){
- const merged=catalog.map(base=>{const saved=state.teams.find(x=>x.name===base.name&&(!x.seasonId||x.seasonId===SEASON_ID));return {...base,...(saved||{}),logo:saved?.logo||base.logo,competition:saved?.competition||base.competition,competitions:Array.isArray(saved?.competitions)&&saved.competitions.length?saved.competitions:[base.competition]};});
+ const merged=catalog.map(base=>{
+   const saved=state.teams.find(x=>x.name===base.name&&(!x.seasonId||x.seasonId===SEASON_ID));
+   // Competition and logo are canonical. A stale Firestore team document must never
+   // move an African club into Europe or move a European club into the Championship.
+   return {...base,...(saved||{}),logo:base.logo,competition:base.competition,competitions:[base.competition],enabled:true};
+ });
  if(comp==='UCL'){
    return qualifiedUCLTeams().map(q=>{const base=merged.find(t=>t.name===q.name)||catalog.find(t=>t.name===q.name)||{};return {...base,name:q.name,competition:'UCL',competitions:['UCL'],enabled:true,qualifiedFrom:q.league,qualificationRank:q.rank};});
  }
- const pool=merged.filter(t=>t.enabled!==false&&isCompActive(t.competition)&&(!comp||teamCompetitions(t).includes(comp)));
- if(comp==='Championship') return pool.slice(0,8);
- return pool;
+ if(comp && ['Premier League','LaLiga','Serie A','Bundesliga','Championship'].includes(comp)){
+   const names=new Set(canonicalRoster(comp));
+   return merged.filter(t=>names.has(t.name));
+ }
+ return merged;
 }
 function catalogObjects(){return catalog.slice();}
 const MAJOR_LEAGUES=['Premier League','LaLiga','Serie A','Bundesliga'];
@@ -165,6 +177,9 @@ async function loadData(){
  }
  state.season=state.seasons.find(s=>s.id===SEASON_ID)||{id:SEASON_ID,name:DEFAULT_SEASON,status:'Ongoing',year:'2026',order:1,theme:1,activeCompetitions:ALL_COMPETITIONS};
  state.teams=teams.filter(t=>!t.seasonId?(SEASON_ID==='season-1'):t.seasonId===SEASON_ID);
+ // Repair stale club placement on every load. The UI is canonical immediately;
+ // admins also get the Firestore documents repaired so the bad placement cannot return.
+ if(state.admin) repairCurrentSeasonClubDocuments().catch(e=>console.warn('club repair',e));
  state.players=players.filter(p=>p.seasonId===SEASON_ID||(!p.seasonId&&SEASON_ID==='season-1'));
  state.fixtures=fixtures.filter(f=>f.seasonId===SEASON_ID||(!f.seasonId&&SEASON_ID==='season-1'));
  state.news=news.filter(n=>n.seasonId===SEASON_ID||(!n.seasonId&&SEASON_ID==='season-1'));
@@ -174,6 +189,36 @@ async function loadData(){
  state.awardVotes=awardVotes.filter(v=>!v.seasonId||v.seasonId===SEASON_ID);
  applySeasonTheme(); renderAll(); renderAwards(); renderComments(); if(state.admin)renderAdmin();
 }
+async function repairCurrentSeasonClubDocuments(){
+  const canonical=catalog.map(t=>({name:t.name,competition:t.competition,competitions:[t.competition],logo:t.logo,enabled:true,seasonId:SEASON_ID}));
+  const byName=new Map(canonical.map(t=>[t.name,t]));
+  const current=state.teams.slice();
+  const batch=db.batch();
+  let changed=false;
+  current.forEach(old=>{
+    const wanted=byName.get(old.name);
+    if(!wanted){batch.delete(db.collection('teams').doc(old.id));changed=true;return;}
+    const bad=old.competition!==wanted.competition || JSON.stringify(old.competitions||[])!==JSON.stringify(wanted.competitions) || old.logo!==wanted.logo || old.enabled===false;
+    if(bad){batch.set(db.collection('teams').doc(old.id),wanted,{merge:true});changed=true;}
+  });
+  for(const wanted of canonical){
+    if(!current.some(x=>x.name===wanted.name)){
+      const id=`${SEASON_ID}__${wanted.name.toLowerCase().replace(/[^a-z0-9]+/g,'-')}`;
+      batch.set(db.collection('teams').doc(id),{id,...wanted},{merge:true});
+      changed=true;
+    }
+  }
+  if(changed) await batch.commit();
+  if(state.season){
+    const groups=state.season.uclGroups||{};
+    const fixedGroups={};
+    for(const g of ['A','B','C','D']) fixedGroups[g]=Array.isArray(groups[g])?groups[g]:[];
+    if(JSON.stringify(state.season.uclGroups||{})!==JSON.stringify(fixedGroups)){
+      await db.collection('seasons').doc(SEASON_ID).set({uclGroups:fixedGroups},{merge:true});
+    }
+  }
+}
+
 function currentSeasonRecord(){
  const live=state.seasons.find(s=>s.current===true);
  return live||state.seasons.find(s=>s.id==='season-1')||state.seasons[0]||null;
