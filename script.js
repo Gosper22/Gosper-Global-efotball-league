@@ -760,7 +760,7 @@ function adminTeams(c){
  };
 }
 function adminFixtures(c){
- c.innerHTML=`<div class="admin-heading"><div><p class="eyebrow">FIXTURE ENGINE</p><h2>Domestic fixtures</h2><p>Generate a proper Home & Away round-robin for every domestic league. Each Matchday contains each pairing once; the return leg is placed in the second half of the season.</p></div><div class="admin-actions"><select id="genComp">${[...MAJOR_LEAGUES,'Championship'].map(x=>`<option>${x}</option>`).join('')}</select><button class="primary" id="generateFixtures">Generate Home & Away</button><button class="primary danger" id="deleteAllFixtures">Delete ALL Fixtures</button></div></div><div class="form-grid admin-form"><select id="fxComp">${ALL_COMPETITIONS.map(x=>`<option>${x}</option>`).join('')}</select><input id="fxHome" placeholder="Home team"><input id="fxAway" placeholder="Away team"><input id="fxDate" type="date"><input id="fxRound" placeholder="Round / Matchday"><button class="primary" id="addFixture">Add Fixture</button></div><div class="admin-list">${state.fixtures.slice().sort((a,b)=>(dateObj(a.date)||0)-(dateObj(b.date)||0)).map(f=>fixtureHtml(f,true)).join('')||'<p class="muted">No fixtures yet.</p>'}</div>`;
+ c.innerHTML=`<div class="admin-heading"><div><p class="eyebrow">FIXTURE ENGINE</p><h2>Domestic fixtures</h2><p>Generate a proper Home & Away round-robin for every domestic league. Each Matchday contains each pairing once; the return leg is placed in the second half of the season.</p></div><div class="admin-actions"><select id="genComp">${[...MAJOR_LEAGUES,'Championship'].map(x=>`<option>${x}</option>`).join('')}</select><button class="primary" id="generateFixtures">Generate Home & Away</button><button class="primary danger" id="deleteLeagueFixtures">Delete Selected League Fixtures</button><button class="primary danger" id="deleteAllFixtures">Delete ALL Fixtures</button></div></div><div class="form-grid admin-form"><select id="fxComp">${ALL_COMPETITIONS.map(x=>`<option>${x}</option>`).join('')}</select><input id="fxHome" placeholder="Home team"><input id="fxAway" placeholder="Away team"><input id="fxDate" type="date"><input id="fxRound" placeholder="Round / Matchday"><button class="primary" id="addFixture">Add Fixture</button></div><div class="admin-list">${state.fixtures.slice().sort((a,b)=>(dateObj(a.date)||0)-(dateObj(b.date)||0)).map(f=>fixtureHtml(f,true)).join('')||'<p class="muted">No fixtures yet.</p>'}</div>`;
  $('generateFixtures').onclick=()=>generateFixtures($('genComp').value);
  $('deleteAllFixtures').onclick=deleteAllFixtures;
  $('addFixture').onclick=async()=>{const id=db.collection('fixtures').doc().id;await adminSave('fixtures',id,{competition:$('fxComp').value,homeTeam:$('fxHome').value.trim(),awayTeam:$('fxAway').value.trim(),date:$('fxDate').value,round:$('fxRound').value||'Matchday',seasonId:SEASON_ID});adminTab('fixtures');};
@@ -781,22 +781,21 @@ async function deleteFixture(id){
   alert('Could not delete this fixture. Check admin permissions and Firestore Rules.');
  }
 }
+
+async function deleteLeagueFixtures(comp){
+ const fixtures=state.fixtures.filter(f=>compOf(f)===comp);
+ if(!fixtures.length){alert(`No ${comp} fixtures found.`);return;}
+ if(!confirm(`Delete ALL ${comp} fixtures only?`)) return;
+ const batch=db.batch();
+ fixtures.forEach(f=>batch.delete(db.collection('fixtures').doc(f.id)));
+ await batch.commit();
+ await loadData();
+ alert(`${comp} fixtures deleted successfully.`);
+ adminTab('fixtures');
+}
 async function deleteAllFixtures(){
  if(!state.fixtures.length){alert('There are no fixtures to delete.');return;}
  if(!confirm(`Delete ALL ${state.fixtures.length} fixtures from every competition? This cannot be undone.`))return;
-
-async function deleteLeagueFixtures(comp){
-  const fixtures = state.fixtures.filter(f => compOf(f) === comp);
-  if(!fixtures.length){ alert(`No ${comp} fixtures found.`); return; }
-  if(!confirm(`Delete ALL ${comp} fixtures only?`)) return;
-  const batch = db.batch();
-  fixtures.forEach(f => batch.delete(db.collection('fixtures').doc(f.id)));
-  await batch.commit();
-  await loadData();
-  alert(`${comp} fixtures deleted successfully.`);
-  adminTab('fixtures');
-}
-
  try{
   const refs=state.fixtures.map(f=>db.collection('fixtures').doc(f.id));
   for(let i=0;i<refs.length;i+=450){
