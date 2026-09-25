@@ -23,7 +23,7 @@ const catalog=[
 // GERMANY — TOP 6
 ['Bayern Munich','Bundesliga','https://images.fotmob.com/image_resources/logo/teamlogo/9823.png'],['Borussia Dortmund','Bundesliga','https://images.fotmob.com/image_resources/logo/teamlogo/9789.png'],['Bayer Leverkusen','Bundesliga','https://images.fotmob.com/image_resources/logo/teamlogo/8178.png'],['RB Leipzig','Bundesliga','https://images.fotmob.com/image_resources/logo/teamlogo/178475.png'],['Eintracht Frankfurt','Bundesliga','https://images.fotmob.com/image_resources/logo/teamlogo/9810.png'],['VfB Stuttgart','Bundesliga','https://images.fotmob.com/image_resources/logo/teamlogo/10269.png'],['Wolfsburg','Bundesliga','https://images.fotmob.com/image_resources/logo/teamlogo/9830.png'],['Borussia Monchengladbach','Bundesliga','https://images.fotmob.com/image_resources/logo/teamlogo/9788.png'],
 // AFRICA CHAMPIONSHIP — exactly 8 clubs
-['Al Ahly','Championship','https://images.fotmob.com/image_resources/logo/teamlogo/101745.png'],['Zamalek','Championship','https://images.fotmob.com/image_resources/logo/teamlogo/80591.png'],['Esperance Tunis','Championship','https://images.fotmob.com/image_resources/logo/teamlogo/8153.png'],['Wydad Casablanca','Championship','https://images.fotmob.com/image_resources/logo/teamlogo/102050.png'],['Mamelodi Sundowns','Championship','https://images.fotmob.com/image_resources/logo/teamlogo/4530.png'],['Simba SC','Championship','https://images.fotmob.com/image_resources/logo/teamlogo/165086.png'],['Young Africans','Championship','https://images.fotmob.com/image_resources/logo/teamlogo/165084.png'],['TP Mazembe','Championship','https://images.fotmob.com/image_resources/logo/teamlogo/128879.png']
+['Al Ahly','Championship','https://images.seeklogo.com/logo-png/30/1/al-ahly-sc-logo-png_seeklogo-305014.png'],['Zamalek','Championship','https://images.seeklogo.com/logo-png/55/1/zamalek-sc-logo-png_seeklogo-550388.png'],['Esperance Tunis','Championship','https://images.seeklogo.com/logo-png/55/1/esperance-sportive-de-tunis-logo-png_seeklogo-550116.png'],['Wydad Casablanca','Championship','https://images.seeklogo.com/logo-png/15/1/wydad-ac-casablanca-logo-png_seeklogo-154263.png'],['Mamelodi Sundowns','Championship','https://images.seeklogo.com/logo-png/60/1/mamelodi-sundowns-fc-logo-png_seeklogo-609852.png'],['Simba SC','Championship','https://images.seeklogo.com/logo-png/45/1/simba-sc-logo-png_seeklogo-453491.png'],['Young Africans','Championship','https://images.seeklogo.com/logo-png/49/1/young-africans-sc-logo-png_seeklogo-490860.png'],['TP Mazembe','Championship','https://images.seeklogo.com/logo-png/26/1/tp-mazembe-logo-png_seeklogo-261872.png']
 ].map(([name,competition,logo])=>({name,competition,logo}));
 
 const state={teams:[],players:[],fixtures:[],news:[],hall:[],season:null,seasons:[],admin:false,awards:[],comments:[],awardVotes:[]};
@@ -33,16 +33,7 @@ const initials=s=>String(s||'?').split(/\s+/).filter(Boolean).slice(0,2).map(x=>
 function dateObj(v){if(!v)return null; if(v.toDate)return v.toDate(); const d=new Date(v); return isNaN(d)?null:d;}
 function dateText(v){const d=dateObj(v);return d?d.toLocaleDateString(undefined,{day:'2-digit',month:'short',year:'numeric'}):'TBA';}
 function logoUrl(name){const t=state.teams.find(x=>x.name===name)||catalog.find(x=>x.name===name);return t?.logo||'';}
-function logo(name,small=false){
-  const src=logoUrl(name);
-  const cls=small?'sm':'';
-  if(!src)return `<span class="logo-box ${cls}"><span class="logo-fallback ${cls}">${esc(initials(name))}</span></span>`;
-  return `<span class="logo-box ${cls}">
-    <img class="team-logo ${cls}" src="${src}" alt="${esc(name)} logo" loading="lazy"
-      onerror="this.style.display='none';this.nextElementSibling.style.display='grid';">
-    <span class="logo-fallback ${cls}" style="display:none">${esc(initials(name))}</span>
-  </span>`;
-}
+function logo(name,small=false){const src=logoUrl(name);return src?`<span class="logo-box ${small?'sm':''}"><img class="team-logo ${small?'sm':''}" src="${src}" alt="${esc(name)} logo" loading="lazy" onerror="this.parentElement.classList.add('failed');this.remove()"><span class="logo-fallback ${small?'sm':''}">${esc(initials(name))}</span></span>`:`<span class="logo-box ${small?'sm':''}"><span class="logo-fallback ${small?'sm':''}">${esc(initials(name))}</span></span>`}
 
 function go(page){document.querySelectorAll('.page').forEach(x=>x.classList.toggle('active',x.dataset.pageContent===page));document.querySelectorAll('[data-page]').forEach(x=>x.classList.toggle('active',x.dataset.page===page));$('sidebar')?.classList.remove('open');window.scrollTo({top:0,behavior:'smooth'});if(page==='teams')renderTeams();if(page==='fixtures')renderFixtures();if(page==='standings')renderStandings();if(page==='players')renderPlayers();if(page==='hall')renderHall();if(page==='news')renderNews();if(page==='awards')renderAwards();if(page==='community')renderComments();}
 document.addEventListener('click',e=>{const b=e.target.closest('[data-page]');if(b)go(b.dataset.page);});
@@ -84,16 +75,14 @@ const AFRICAN_CHAMPIONSHIP_SET=new Set(AFRICAN_CHAMPIONSHIP_CLUBS);
 function isAfricanClub(name){return AFRICAN_CHAMPIONSHIP_SET.has(name);}
 function originalClubNamesFor(competition){return catalog.filter(t=>t.competition===competition).map(t=>t.name);}
 function repairedLeagueRosters(){
-  // Season 1/current-season repair rule:
-  // 1) No African club may remain in Premier League, LaLiga, Serie A or Bundesliga.
-  // 2) The eight African clubs belong only to Championship.
-  // 3) Each major league is restored to its original eight-club order from the catalog.
-  // 4) Every restored club gets its canonical catalog logo and competition.
-  // This deliberately ignores stale Firestore competition fields so an old promotion cannot
-  // move an African club back into a European league.
   const rosters={};
+  const currentChamp=teamObjects('Championship').slice(0,8).map(t=>t.name);
   MAJOR_LEAGUES.forEach(league=>{
-    rosters[league]=originalClubNamesFor(league).slice(0,8);
+    const originals=originalClubNamesFor(league);
+    const current=teamObjects(league).slice(0,8).map(t=>t.name);
+    const keep=current.filter(name=>!isAfricanClub(name) && originals.includes(name));
+    const missing=originals.filter(name=>!keep.includes(name));
+    rosters[league]=[...keep,...missing].slice(0,8);
   });
   rosters.Championship=AFRICAN_CHAMPIONSHIP_CLUBS.slice(0,8);
   return rosters;
@@ -123,7 +112,7 @@ function qualifiedUCLTeams(){
  return MAJOR_LEAGUES.flatMap(league=>table(league).slice(0,4).map((r,i)=>({name:r.team,league,rank:i+1})));
 }
 
-function activeTeams(comp){const teams=teamObjects(comp).filter(t=>isCompActive(comp));return comp==='Championship'?teams.slice(0,8):teams;}
+function activeTeams(comp){if(comp==='FA Cup')return faCupPool().map(name=>catalogObjects().find(t=>t.name===name)||{name});const teams=teamObjects(comp).filter(t=>isCompActive(comp));return comp==='Championship'?teams.slice(0,8):teams;}
 function populateClubPicker(q=''){
  const comp=$('competition').value, query=q.toLowerCase();
  const registeredClubs=new Set(
@@ -296,7 +285,7 @@ function renderStandings(){
 }
 function fixtureHtml(f,admin=false){const [h,a]=teamsInFixture(f),s=score(f);return `<article class="fixture-card"><div class="fixture-meta"><span class="competition-pill">${esc(compOf(f))}</span><span>${dateText(f.date||f.kickoff)}</span><span>${esc(f.round||'Match')}</span></div><div class="fixture-teams"><div class="fixture-team">${logo(h)}<strong>${esc(h)}</strong></div><div class="fixture-score"><b>${s?`${s.h} - ${s.a}`:'VS'}</b><small>${s?'FULL TIME':'UPCOMING'}</small></div><div class="fixture-team">${logo(a)}<strong>${esc(a)}</strong></div></div>${admin?`<div class="fixture-admin-actions"><button class="mini-btn" onclick="editFixture('${f.id}')">Edit</button><button class="mini-btn danger" onclick="deleteFixture('${f.id}')">Delete</button></div>`:''}</article>`;}
 function renderFixtures(){
- let fs=state.fixtures.filter(f=>{const c=compOf(f);const [h,a]=teamsInFixture(f);return !!teamObjects(c).find(t=>t.name===h)&&!!teamObjects(c).find(t=>t.name===a);});
+ let fs=state.fixtures.filter(f=>{const c=compOf(f);const [h,a]=teamsInFixture(f);const pool=c==='FA Cup'?faCupPool():teamObjects(c).map(t=>t.name);return pool.includes(h)&&pool.includes(a);});
  const c=$('fixtureCompetition')?.value||'all',st=$('fixtureStatus')?.value||'all';
  if(c!=='all')fs=fs.filter(f=>compOf(f)===c);
  if(st==='upcoming')fs=fs.filter(f=>!score(f));
@@ -614,7 +603,8 @@ async function switchSeason(id){
  setTimeout(()=>document.body.classList.remove('season-page-turn'),650);
 }
 function renderAll(){renderDashboard();renderTeams();renderFixtures();renderStandings();renderPlayers();renderHall();renderNews();renderAwards();renderComments();$('sideSeason').textContent=$('topSeason').textContent=$('footerSeason').textContent=state.season?.name||DEFAULT_SEASON;if($('seasonStatus'))$('seasonStatus').textContent=state.season?.status||'Ongoing';applySeasonTheme();}
-function showCompetition(c){const teams=activeTeams(c);$('competitionDetail').innerHTML=`<div class="panel-head"><div><span class="eyebrow">${esc(c)}</span><h2>${esc(c)} Control</h2></div><button class="primary" id="detailRegister">Register Player</button></div><div class="detail-grid"><div><b>${teams.length}</b><span>Available teams</span></div><div><b>${state.fixtures.filter(f=>compOf(f)===c).length}</b><span>Fixtures</span></div><div><b>${state.players.filter(p=>p.competition===c).length}</b><span>Players</span></div></div><div class="mini-team-list">${teams.slice(0,12).map(t=>`<span>${logo(t.name,true)}${esc(t.name)}</span>`).join('')}</div>`;$('detailRegister').onclick=()=>{openRegister();$('competition').value=c;populateClubPicker('');};}
+function showCompetition(c){const teams=activeTeams(c);const register=c==='FA Cup'?'':'<button class="primary" id="detailRegister">Register Player</button>';const playerStat=c==='FA Cup'?'':`<div><b>${state.players.filter(p=>p.competition===c).length}</b><span>Players</span></div>`;$('competitionDetail').innerHTML=`<div class="panel-head"><div><span class="eyebrow">${esc(c)}</span><h2>${esc(c)} Control</h2></div>${register}</div><div class="detail-grid"><div><b>${teams.length}</b><span>Available teams</span></div><div><b>${state.fixtures.filter(f=>compOf(f)===c).length}</b><span>Fixtures</span></div>${playerStat}</div><div class="mini-team-list">${teams.slice(0,40).map(t=>`<span>${logo(t.name,true)}${esc(t.name)}</span>`).join('')}</div>`;if(c!=='FA Cup')$('detailRegister').onclick=()=>{openRegister();$('competition').value=c;populateClubPicker('');};}
+
 function searchSite(e){const q=(e.target?.value||e||'').trim().toLowerCase();if(!q)return;const t=teamObjects().find(x=>x.name.toLowerCase().includes(q));const p=state.players.find(x=>String(x.name).toLowerCase().includes(q)||String(x.playerId).toLowerCase().includes(q));const f=state.fixtures.find(x=>teamsInFixture(x).some(n=>n.toLowerCase().includes(q)));if(t)go('teams');else if(p)go('players');else if(f)go('fixtures');}
 
 // ---------- Admin ----------
@@ -635,13 +625,13 @@ async function adminDelete(collection,id){if(!confirm('Delete this item?'))retur
 function renderAdmin(){
  const a=$('adminArea');
  if(!state.admin){a.innerHTML=`<div class="admin-lock"><div class="lock-icon">⚙</div><h2>Admin access required</h2><p>Sign in with your Firebase administrator account.</p><button class="primary" id="adminLoginBtn2">Sign in to Control Center</button></div>`;$('adminLoginBtn2').onclick=openAdminLogin;return;}
- a.innerHTML=`<div class="admin-shell"><div class="admin-nav"><button class="admin-tab active" data-admin-tab="overview">Overview</button><button class="admin-tab season-launch-tab" data-admin-tab="newseason">▶ Start New Season</button><button class="admin-tab" data-admin-tab="competitions">Competitions</button><button class="admin-tab" data-admin-tab="teams">Teams</button><button class="admin-tab" data-admin-tab="fixtures">Fixtures</button><button class="admin-tab" data-admin-tab="ucl">UCL Groups</button><button class="admin-tab" data-admin-tab="results">Results</button><button class="admin-tab" data-admin-tab="members">Members</button><button class="admin-tab" data-admin-tab="promotion">Promotion / Relegation</button><button class="admin-tab" data-admin-tab="news">News</button><button class="admin-tab" data-admin-tab="awards">🏆 Awards</button><button class="admin-tab" data-admin-tab="community">💬 Community</button><button class="admin-tab" data-admin-tab="hall">Hall of Fame</button><button class="admin-tab" data-admin-tab="season">Season</button><button class="ghost" id="adminSignOut">Sign out</button></div><div id="adminContent"></div></div>`;
+ a.innerHTML=`<div class="admin-shell"><div class="admin-nav"><button class="admin-tab active" data-admin-tab="overview">Overview</button><button class="admin-tab season-launch-tab" data-admin-tab="newseason">▶ Start New Season</button><button class="admin-tab" data-admin-tab="competitions">Competitions</button><button class="admin-tab" data-admin-tab="teams">Teams</button><button class="admin-tab" data-admin-tab="fixtures">Fixtures</button><button class="admin-tab" data-admin-tab="facup">FA Cup</button><button class="admin-tab" data-admin-tab="ucl">UCL Groups</button><button class="admin-tab" data-admin-tab="results">Results</button><button class="admin-tab" data-admin-tab="members">Members</button><button class="admin-tab" data-admin-tab="promotion">Promotion / Relegation</button><button class="admin-tab" data-admin-tab="news">News</button><button class="admin-tab" data-admin-tab="awards">🏆 Awards</button><button class="admin-tab" data-admin-tab="community">💬 Community</button><button class="admin-tab" data-admin-tab="hall">Hall of Fame</button><button class="admin-tab" data-admin-tab="season">Season</button><button class="ghost" id="adminSignOut">Sign out</button></div><div id="adminContent"></div></div>`;
  document.querySelectorAll('.admin-tab').forEach(b=>b.onclick=()=>adminTab(b.dataset.adminTab));$('adminSignOut').onclick=()=>auth.signOut().then(()=>{state.admin=false;renderAdmin();});adminTab('overview');
 }
 function adminTab(tab){
  document.querySelectorAll('.admin-tab').forEach(b=>b.classList.toggle('active',b.dataset.adminTab===tab));
  const c=$('adminContent');
- if(tab==='overview')adminOverview(c);if(tab==='newseason')adminNewSeason(c);if(tab==='competitions')adminCompetitions(c);if(tab==='teams')adminTeams(c);if(tab==='fixtures')adminFixtures(c);if(tab==='ucl')adminUCL(c);if(tab==='results')adminResults(c);if(tab==='members')adminMembers(c);if(tab==='promotion')adminPromotion(c);if(tab==='news')adminNews(c);if(tab==='awards')adminAwards(c);if(tab==='community')adminCommunity(c);if(tab==='hall')adminHall(c);if(tab==='season')adminSeason(c);
+ if(tab==='overview')adminOverview(c);if(tab==='newseason')adminNewSeason(c);if(tab==='competitions')adminCompetitions(c);if(tab==='teams')adminTeams(c);if(tab==='fixtures')adminFixtures(c);if(tab==='facup')adminFACup(c);if(tab==='ucl')adminUCL(c);if(tab==='results')adminResults(c);if(tab==='members')adminMembers(c);if(tab==='promotion')adminPromotion(c);if(tab==='news')adminNews(c);if(tab==='awards')adminAwards(c);if(tab==='community')adminCommunity(c);if(tab==='hall')adminHall(c);if(tab==='season')adminSeason(c);
 }
 function adminNewSeason(c){
  const s=state.season||{};
@@ -662,10 +652,10 @@ function adminCompetitions(c){
 }
 function adminTeams(c){
  const all=catalogObjects();
- c.innerHTML=`<div class="admin-heading"><div><p class="eyebrow">CLUB CONTROL</p><h2>Official club pool</h2><p>Original structure: 8 clubs in each major league and 8 African clubs in Championship. Team logos below come directly from the original club catalog.</p></div><div class="admin-actions"><button class="primary" id="repairAfricanClubs">↩ FIX AFRICAN CLUBS</button><button class="primary" id="restoreOriginalClubs">↩ Restore Original Clubs</button><button class="primary" id="applyClubStructure">Save Club Availability</button></div></div><div class="admin-control-card"><p class="muted"><b>Restore Original Clubs</b> removes promoted/relegated club records from the selected season, restores the original 40 clubs, resets their original competitions and restores every original logo. It does not delete previous seasons.</p></div><div class="admin-team-grid">${all.map(t=>{const saved=state.teams.find(x=>x.name===t.name)||{};return `<div class="admin-team-card"><div class="admin-team-main">${logo(t.name)}<div><b>${esc(t.name)}</b><small>${esc(t.competition)}</small></div></div><div class="comp-checks"><label><input type="checkbox" checked disabled> ${esc(t.competition)}</label><label class="enable-check"><input type="checkbox" data-team-enabled="${esc(t.name)}" ${saved.enabled!==false?'checked':''}> Available</label></div></div>`}).join('')}</div>`;
+ c.innerHTML=`<div class="admin-heading"><div><p class="eyebrow">CLUB CONTROL</p><h2>Official club pool</h2><p>Original structure: 8 clubs in each major league and 8 African clubs in Championship. Team logos below come directly from the original club catalog.</p></div><div class="admin-actions"><button class="primary" id="repairAfricanClubs">↩ Relegate African Clubs</button><button class="primary" id="restoreOriginalClubs">↩ Restore Original Clubs</button><button class="primary" id="applyClubStructure">Save Club Availability</button></div></div><div class="admin-control-card"><p class="muted"><b>Restore Original Clubs</b> removes promoted/relegated club records from the selected season, restores the original 40 clubs, resets their original competitions and restores every original logo. It does not delete previous seasons.</p></div><div class="admin-team-grid">${all.map(t=>{const saved=state.teams.find(x=>x.name===t.name)||{};return `<div class="admin-team-card"><div class="admin-team-main">${logo(t.name)}<div><b>${esc(t.name)}</b><small>${esc(t.competition)}</small></div></div><div class="comp-checks"><label><input type="checkbox" checked disabled> ${esc(t.competition)}</label><label class="enable-check"><input type="checkbox" data-team-enabled="${esc(t.name)}" ${saved.enabled!==false?'checked':''}> Available</label></div></div>`}).join('')}</div>`;
  $('repairAfricanClubs').onclick=async()=>{
    if(!state.admin)return alert('Admin access required.');
-   if(!confirm('FIX THE CURRENT SEASON CLUB STRUCTURE?\n\n• All African clubs will be returned to Championship.\n• Any African club found in Premier League, LaLiga, Serie A or Bundesliga will be removed from that league.\n• The correct original European clubs will replace them in the original league order.\n• All 40 clubs will receive their canonical logos.\n• Old promoted/relegated competition records will not be allowed to move them back.'))return;
+   if(!confirm('Repair African club placements for the current season?\n\nAll 8 African Championship clubs will be removed from the four major leagues. Missing original European clubs will be restored to their correct league with their catalog logos. Championship will contain exactly the 8 African clubs.'))return;
    try{
      const live=currentSeasonRecord(); const targetId=live?.id||SEASON_ID;
      const allTeams=await getAllStrict('teams');
@@ -682,7 +672,7 @@ function adminTeams(c){
      await batch.commit();
      await adminSave('seasons',targetId,{uclTeams:[],uclGroups:{A:[],B:[],C:[],D:[]},uclKnockout:[]});
      await loadData();
-     alert('CURRENT SEASON CLUB STRUCTURE FIXED.\n\n✓ All 8 African clubs are back in Championship\n✓ African clubs removed from all 4 major leagues\n✓ Correct original European clubs restored in their original order\n✓ All club logos restored from the canonical catalog\n✓ Stale season movement/UCL qualification cleared');
+     alert('African club placement repaired.\n\n✓ All African clubs are in Championship\n✓ African clubs removed from major leagues\n✓ Missing original European clubs restored with original logos\n✓ UCL group/knockout setup reset');
      adminTab('teams');
    }catch(e){console.error(e);alert(`Could not repair club placements.\n\nError: ${e.message||e}`);}
  };
@@ -845,6 +835,65 @@ async function generateFixtures(comp){
  alert(`${fixtures.length} fixtures generated for ${comp}. ${rounds} first-leg Matchdays + ${rounds} return-leg Matchdays, with ${Math.floor(gamesPerDay)} match(es) per Matchday.`);
 }
 
+function faCupPool(){
+  const seen=new Set(), out=[];
+  [...MAJOR_LEAGUES,'Championship'].forEach(comp=>teamObjects(comp).forEach(t=>{if(!seen.has(t.name)){seen.add(t.name);out.push(t.name);}}));
+  return out;
+}
+function faCupRoundLabel(n){return n===40?'Preliminary Round (40 → 32)':n===32?'Round of 32':n===16?'Round of 16':n===8?'Quarter-finals':n===4?'Semi-finals':'Final';}
+function faCupCurrentRound(){
+  const fs=state.fixtures.filter(f=>compOf(f)==='FA Cup');
+  if(!fs.length)return null;
+  const rounds=[...new Set(fs.map(f=>f.faRound||f.round))];
+  const order=['Preliminary Round','Round of 32','Round of 16','Quarter-finals','Semi-finals','Final'];
+  return rounds.sort((a,b)=>order.indexOf(b)-order.indexOf(a))[0]||null;
+}
+function faCupWinner(f){
+  const s=score(f), [h,a]=teamsInFixture(f);
+  if(!s)return '';
+  if(s.h>s.a)return h;if(s.a>s.h)return a;
+  return f.winnerTeam||'';
+}
+function adminFACup(c){
+  const pool=faCupPool();
+  const fs=state.fixtures.filter(f=>compOf(f)==='FA Cup');
+  const current=faCupCurrentRound();
+  const incomplete=current?fs.filter(f=>(f.faRound||f.round)===current&&!score(f)).length:0;
+  c.innerHTML=`<div class="admin-heading"><div><p class="eyebrow">FA CUP</p><h2>Single-Match Knockout</h2><p>All ${pool.length} clubs from the four major leagues plus Championship enter. UCL clubs are excluded. Every tie is one match; the loser is eliminated. The 40-team field starts with 8 byes to create a Round of 32.</p></div><div class="admin-actions"><button class="primary" id="generateFACup">${fs.length?'Generate Next Round':'Generate FA Cup'}</button><button class="primary danger" id="deleteFACup">Delete FA Cup</button></div></div>
+  <div class="admin-control-card"><div><p class="eyebrow">FIELD</p><h3>${pool.length} clubs</h3><p class="muted">${pool.join(' • ')}</p></div></div>
+  <div class="admin-list">${fs.length?fs.slice().sort((a,b)=>String(a.faRound||a.round).localeCompare(String(b.faRound||b.round))).map(f=>{const s=score(f),w=faCupWinner(f);return `<article class="admin-item"><div><b>${esc(f.faRound||f.round)}</b><span>${esc(f.homeTeam)} vs ${esc(f.awayTeam)} • ${s?`${s.h}-${s.a}${w?' • Winner: '+w:''}`:'Not played'}</span></div></article>`}).join(''):'<p class="muted">No FA Cup fixtures generated yet.</p>'}</div>`;
+  $('generateFACup').onclick=generateFACupRound;
+  $('deleteFACup').onclick=async()=>{if(!fs.length)return;if(!confirm('Delete all FA Cup fixtures for this season?'))return;for(let i=0;i<fs.length;i+=400){const b=db.batch();fs.slice(i,i+400).forEach(f=>b.delete(db.collection('fixtures').doc(f.id)));await b.commit();}await db.collection('seasons').doc(SEASON_ID).set({faCup:{currentRound:null,winners:[]}}, {merge:true});await loadData();adminTab('facup');};
+}
+async function generateFACupRound(){
+  const pool=faCupPool(); if(pool.length<2)return alert('FA Cup needs at least 2 eligible clubs.');
+  let fs=state.fixtures.filter(f=>compOf(f)==='FA Cup');
+  if(!fs.length){
+    const shuffled=pool.slice().sort(()=>Math.random()-0.5), byes=shuffled.slice(0,8), playing=shuffled.slice(8), out=[];
+    for(let i=0;i<playing.length;i+=2)out.push({homeTeam:playing[i],awayTeam:playing[i+1],faRound:'Preliminary Round',round:'Preliminary Round'});
+    // Store byes in season document; they join the Round of 32 after preliminary winners are known.
+    await db.collection('seasons').doc(SEASON_ID).set({faCup:{currentRound:'Preliminary Round',byes},faCupPool:pool},{merge:true});
+    for(let i=0;i<out.length;i+=400){const b=db.batch();out.slice(i,i+400).forEach(x=>{const ref=db.collection('fixtures').doc();b.set(ref,{...x,competition:'FA Cup',seasonId:SEASON_ID,stage:'FA Cup',createdAt:firebase.firestore.FieldValue.serverTimestamp()});});await b.commit();}
+    await loadData();alert('FA Cup Preliminary Round generated: 16 matches + 8 byes.');adminTab('facup');return;
+  }
+  const seasonCup=state.season?.faCup||{};
+  const current=seasonCup.currentRound;
+  const cur=fs.filter(f=>(f.faRound||f.round)===current);
+  if(!cur.length)return alert('No current FA Cup round found.');
+  if(cur.some(f=>!score(f)))return alert('Complete every match in the current round before generating the next round.');
+  const winners=cur.map(f=>faCupWinner(f)).filter(Boolean);
+  if(winners.length!==cur.length)return alert('A drawn FA Cup match needs an administrator-selected winner before the next round can be generated.');
+  let nextTeams=winners;
+  if(current==='Preliminary Round') nextTeams=[...(seasonCup.byes||[]),...winners];
+  if(nextTeams.length<2)return alert('Not enough qualified teams for another round.');
+  const labels={32:'Round of 32',16:'Round of 16',8:'Quarter-finals',4:'Semi-finals',2:'Final'};
+  const next=labels[nextTeams.length]; if(!next)return alert('FA Cup bracket is complete.');
+  const shuffled=nextTeams.slice().sort(()=>Math.random()-0.5),out=[];
+  for(let i=0;i<shuffled.length;i+=2)out.push({homeTeam:shuffled[i],awayTeam:shuffled[i+1],faRound:next,round:next});
+  for(let i=0;i<out.length;i+=400){const b=db.batch();out.slice(i,i+400).forEach(x=>{const ref=db.collection('fixtures').doc();b.set(ref,{...x,competition:'FA Cup',seasonId:SEASON_ID,stage:'FA Cup',createdAt:firebase.firestore.FieldValue.serverTimestamp()});});await b.commit();}
+  await db.collection('seasons').doc(SEASON_ID).set({faCup:{currentRound:next,byes:[]}}, {merge:true});
+  await loadData();alert(`${next} generated: ${out.length} single-match tie${out.length===1?'':'s'}.`);adminTab('facup');
+}
 function adminUCL(c){
  const qualified=qualifiedUCLTeams();
  const groupsDocId=`${SEASON_ID}_groups`;
@@ -1166,13 +1215,15 @@ async function saveFixtureResult(id){
   if(!state.admin){alert('Admin access required.');return;}
   const fixture=state.fixtures.find(f=>f.id===id);
   if(!fixture){alert('Fixture not found.');return;}
-  const hEl=$('homeScore-'+id), aEl=$('awayScore-'+id);
+  const hEl=$('homeScore-'+id), aEl=$('awayScore-'+id), wEl=$('winner-'+id);
   const hv=hEl?.value.trim(), av=aEl?.value.trim();
   if(hv===''||av===''||!/^[0-9]+$/.test(hv)||!/^[0-9]+$/.test(av)){alert('Enter valid whole-number scores for both teams.');return;}
+  const winner = fixture.competition==='FA Cup' ? (Number(hv)>Number(av)?fixture.homeTeam:Number(av)>Number(hv)?fixture.awayTeam:(wEl?.value||'')) : '';
+  if(fixture.competition==='FA Cup' && Number(hv)===Number(av) && !winner){alert('For a drawn FA Cup match, select the team that won on penalties / advanced.');return;}
   const btn=hEl?.parentElement?.querySelector('button');
   if(btn){btn.disabled=true;btn.textContent='Saving…';}
   try{
-    await db.collection('fixtures').doc(id).set({homeScore:Number(hv),awayScore:Number(av),resultStatus:'completed',resultUpdatedAt:firebase.firestore.FieldValue.serverTimestamp(),updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+    await db.collection('fixtures').doc(id).set({homeScore:Number(hv),awayScore:Number(av),resultStatus:'completed',...(fixture.competition==='FA Cup'?{winnerTeam:winner}:{}),resultUpdatedAt:firebase.firestore.FieldValue.serverTimestamp(),updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
     await db.collection('fixtures').doc(id).update({homeScorers:firebase.firestore.FieldValue.delete(),awayScorers:firebase.firestore.FieldValue.delete()});
     await loadData();
     adminTab('results');
@@ -1189,7 +1240,7 @@ async function clearFixtureResult(id){
   if(!state.admin)return;
   if(!confirm('Clear this result?'))return;
   try{
-    await db.collection('fixtures').doc(id).update({homeScore:firebase.firestore.FieldValue.delete(),awayScore:firebase.firestore.FieldValue.delete(),homeScorers:firebase.firestore.FieldValue.delete(),awayScorers:firebase.firestore.FieldValue.delete(),resultStatus:firebase.firestore.FieldValue.delete(),resultUpdatedAt:firebase.firestore.FieldValue.delete(),updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
+    await db.collection('fixtures').doc(id).update({homeScore:firebase.firestore.FieldValue.delete(),awayScore:firebase.firestore.FieldValue.delete(),homeScorers:firebase.firestore.FieldValue.delete(),awayScorers:firebase.firestore.FieldValue.delete(),resultStatus:firebase.firestore.FieldValue.delete(),winnerTeam:firebase.firestore.FieldValue.delete(),resultUpdatedAt:firebase.firestore.FieldValue.delete(),updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
     await loadData();
     adminTab('results');
   }catch(e){
@@ -1201,5 +1252,5 @@ window.clearFixtureResult=clearFixtureResult;
 
 function resultFixtureHtml(f){
  const [h,a]=teamsInFixture(f),sc=score(f),ss=fixtureScorerEntries(f);
- return `<article class="admin-item"><div><b>${esc(h)} vs ${esc(a)}</b><span>${esc(compOf(f))} • ${esc(f.round||'Matchday')} • ${esc(dateText(f.date||f.kickoff))}</span></div><div class="admin-result-form"><input type="number" min="0" id="homeScore-${f.id}" value="${sc?sc.h:''}" placeholder="Home"><strong>-</strong><input type="number" min="0" id="awayScore-${f.id}" value="${sc?sc.a:''}" placeholder="Away"><button class="mini-btn" onclick="saveFixtureResult('${f.id}')">Save Result</button>${sc?`<button class="mini-btn danger" onclick="clearFixtureResult('${f.id}')">Clear</button>`:''}</div></article>`;
+ return `<article class="admin-item"><div><b>${esc(h)} vs ${esc(a)}</b><span>${esc(compOf(f))} • ${esc(f.round||'Matchday')} • ${esc(dateText(f.date||f.kickoff))}</span></div><div class="admin-result-form"><input type="number" min="0" id="homeScore-${f.id}" value="${sc?sc.h:''}" placeholder="Home"><strong>-</strong><input type="number" min="0" id="awayScore-${f.id}" value="${sc?sc.a:''}" placeholder="Away">${f.competition==='FA Cup'&&sc&&sc.h===sc.a?`<select id="winner-${f.id}"><option value="">Winner after penalties</option><option value="${esc(h)}" ${f.winnerTeam===h?'selected':''}>${esc(h)}</option><option value="${esc(a)}" ${f.winnerTeam===a?'selected':''}>${esc(a)}</option></select>`:''}<button class="mini-btn" onclick="saveFixtureResult('${f.id}')">Save Result</button>${sc?`<button class="mini-btn danger" onclick="clearFixtureResult('${f.id}')">Clear</button>`:''}</div></article>`;
 }
