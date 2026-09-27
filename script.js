@@ -895,12 +895,12 @@ async function generateFACupRound(){
   const pool=faCupPool(); if(pool.length<2)return alert('FA Cup needs at least 2 eligible clubs.');
   let fs=state.fixtures.filter(f=>compOf(f)==='FA Cup');
   if(!fs.length){
-    const shuffled=pool.slice().sort(()=>Math.random()-0.5), byes=shuffled.slice(0,8), playing=shuffled.slice(8), out=[];
+    const shuffled=pool.slice().sort(()=>Math.random()-0.5), byes=[], playing=shuffled, out=[];
     for(let i=0;i<playing.length;i+=2)out.push({homeTeam:playing[i],awayTeam:playing[i+1],faRound:'Preliminary Round',round:'Preliminary Round'});
     // Store byes in season document; they join the Round of 32 after preliminary winners are known.
-    await db.collection('seasons').doc(SEASON_ID).set({faCup:{currentRound:'Preliminary Round',byes},faCupPool:pool},{merge:true});
+    await db.collection('seasons').doc(SEASON_ID).set({faCup:{currentRound:'Preliminary Round',byes:[]},faCupPool:pool},{merge:true});
     for(let i=0;i<out.length;i+=400){const b=db.batch();out.slice(i,i+400).forEach(x=>{const ref=db.collection('fixtures').doc();b.set(ref,{...x,competition:'FA Cup',seasonId:SEASON_ID,stage:'FA Cup',createdAt:firebase.firestore.FieldValue.serverTimestamp()});});await b.commit();}
-    await loadData();alert('FA Cup Preliminary Round generated: 16 matches + 8 byes.');adminTab('facup');return;
+    await loadData();alert('FA Cup Preliminary Round generated: all 40 teams included (20 manual fixtures).');adminTab('facup');return;
   }
   const seasonCup=state.season?.faCup||{};
   const current=seasonCup.currentRound;
