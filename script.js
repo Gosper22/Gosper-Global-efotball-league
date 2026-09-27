@@ -759,40 +759,14 @@ function adminTeams(c){
    }catch(e){console.error(e);alert(`Could not save club structure.\n\nError: ${e.message||e}`);}
  };
 }
-function manualFixtureTeams(comp){
-  if(comp==='FA Cup') return faCupPool();
-  if(comp==='UCL') return qualifiedUCLTeams().map(t=>t.name);
-  return teamObjects(comp).map(t=>t.name).filter(Boolean);
-}
-function refreshManualFixtureTeams(){
-  const comp=$('fxComp')?.value;
-  if(!comp)return;
-  const teams=manualFixtureTeams(comp);
-  const h=$('fxHome'), a=$('fxAway');
-  if(h)h.innerHTML='<option value="">Select home team</option>'+teams.map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join('');
-  if(a)a.innerHTML='<option value="">Select away team</option>'+teams.map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join('');
-}
 function adminFixtures(c){
- const compOptions=ALL_COMPETITIONS.map(x=>`<option>${x}</option>`).join('');
- c.innerHTML=`<div class="admin-heading"><div><p class="eyebrow">FIXTURE ENGINE</p><h2>Fixtures & Manual Fixture Builder</h2><p>Generate Home & Away schedules for domestic leagues, or manually create a fixture for any competition. FA Cup includes all 40 clubs; no club is removed from the available pool.</p></div><div class="admin-actions"><select id="genComp">${[...MAJOR_LEAGUES,'Championship'].map(x=>`<option>${x}</option>`).join('')}</select><button class="primary" id="generateFixtures">Generate Home & Away</button><button class="primary danger" id="deleteLeagueFixtures">Delete Selected League Fixtures</button><button class="primary danger" id="deleteAllFixtures">Delete ALL Fixtures</button></div></div>
- <div class="admin-control-card manual-fixture-card"><div><p class="eyebrow">MANUAL FIXTURE</p><h3>Manually schedule a match</h3><p class="muted">For FA Cup, all 40 clubs are available here, including the 8 clubs that were previously left out/byes. Choose the two clubs, set the date and round, then save.</p></div><div class="form-grid admin-form"><select id="fxComp">${compOptions}</select><select id="fxHome"><option value="">Select home team</option></select><select id="fxAway"><option value="">Select away team</option></select><input id="fxDate" type="date"><input id="fxRound" placeholder="Round / Matchday e.g. Round of 32"><button class="primary" id="addFixture">Add Manual Fixture</button></div><p id="manualFixtureMsg" class="muted">FA Cup selected: 40 eligible clubs.</p></div>
- <div class="admin-list">${state.fixtures.slice().sort((a,b)=>(dateObj(a.date)||0)-(dateObj(b.date)||0)).map(f=>fixtureHtml(f,true)).join('')||'<p class="muted">No fixtures yet.</p>'}</div>`;
+ c.innerHTML=`<div class="admin-heading"><div><p class="eyebrow">FIXTURE ENGINE</p><h2>Domestic fixtures</h2><p>Generate a proper Home & Away round-robin for every domestic league. Each Matchday contains each pairing once; the return leg is placed in the second half of the season.</p></div><div class="admin-actions"><select id="genComp">${[...MAJOR_LEAGUES,'Championship'].map(x=>`<option>${x}</option>`).join('')}</select><button class="primary" id="generateFixtures">Generate Home & Away</button><button class="primary danger" id="deleteLeagueFixtures">Delete Selected League Fixtures</button><button class="primary danger" id="deleteAllFixtures">Delete ALL Fixtures</button></div></div><div class="form-grid admin-form"><select id="fxComp">${ALL_COMPETITIONS.map(x=>`<option>${x}</option>`).join('')}</select><select id="fxHome"><option value="">Home team</option></select><select id="fxAway"><option value="">Away team</option></select><input id="fxDate" type="date"><input id="fxRound" placeholder="Round / Matchday"><button class="primary" id="addFixture">Add Fixture</button></div><div class="admin-list">${state.fixtures.slice().sort((a,b)=>(dateObj(a.date)||0)-(dateObj(b.date)||0)).map(f=>fixtureHtml(f,true)).join('')||'<p class="muted">No fixtures yet.</p>'}</div>`;
  $('generateFixtures').onclick=()=>generateFixtures($('genComp').value);
  $('deleteLeagueFixtures').onclick=()=>deleteLeagueFixtures($('genComp').value);
  $('deleteAllFixtures').onclick=deleteAllFixtures;
- $('fxComp').onchange=()=>{refreshManualFixtureTeams();const m=$('manualFixtureMsg');if(m)m.textContent=$('fxComp').value==='FA Cup'?'FA Cup selected: all 40 eligible clubs are available, including the 8 previously left out/byes.':`${$('fxComp').value} selected.`;};
- $('addFixture').onclick=async()=>{
-   const competition=$('fxComp').value, home=$('fxHome').value.trim(), away=$('fxAway').value.trim();
-   if(!competition||!home||!away||!$('fxDate').value){alert('Select competition, both teams and a date.');return;}
-   if(home===away){alert('Home and away teams must be different.');return;}
-   const valid=new Set(manualFixtureTeams(competition));
-   if(!valid.has(home)||!valid.has(away)){alert('Please select valid teams from the selected competition.');return;}
-   const id=db.collection('fixtures').doc().id;
-   await adminSave('fixtures',id,{competition,homeTeam:home,awayTeam:away,date:$('fxDate').value,round:$('fxRound').value.trim()||'Matchday',seasonId:SEASON_ID,manual:true});
-   alert(`Manual fixture added: ${home} vs ${away}`);
-   adminTab('fixtures');
- };
- refreshManualFixtureTeams();
+ const refreshManualTeams=()=>{const comp=$('fxComp').value;const names=comp==='FA Cup'?faCupPool():teamObjects(comp).map(t=>t.name);const opts='<option value=\"\">Select team</option>'+names.map(n=>`<option value=\"${esc(n)}\">${esc(n)}</option>`).join('');$('fxHome').innerHTML=opts;$('fxAway').innerHTML=opts;};
+ $('fxComp').onchange=refreshManualTeams; refreshManualTeams();
+ $('addFixture').onclick=async()=>{const competition=$('fxComp').value,home=$('fxHome').value.trim(),away=$('fxAway').value.trim();if(!home||!away)return alert('Select both Home and Away teams.');if(home===away)return alert('Home and Away teams must be different.');const id=db.collection('fixtures').doc().id;await adminSave('fixtures',id,{competition,homeTeam:home,awayTeam:away,date:$('fxDate').value,round:$('fxRound').value||'Matchday',...(competition==='FA Cup'?{faRound:$('fxRound').value||'Preliminary Round',stage:'FA Cup'}:{}),seasonId:SEASON_ID});adminTab('fixtures');};
 }
 async function deleteFixture(id){
  const f=state.fixtures.find(x=>x.id===id);
@@ -915,8 +889,20 @@ function adminFACup(c){
   const incomplete=current?fs.filter(f=>(f.faRound||f.round)===current&&!score(f)).length:0;
   c.innerHTML=`<div class="admin-heading"><div><p class="eyebrow">FA CUP</p><h2>Single-Match Knockout</h2><p>All ${pool.length} clubs from the four major leagues plus Championship enter. UCL clubs are excluded. Every tie is one match; the loser is eliminated. The 40-team field starts with 8 byes to create a Round of 32.</p></div><div class="admin-actions"><button class="primary" id="generateFACup">${fs.length?'Generate Next Round':'Generate FA Cup'}</button><button class="primary danger" id="deleteFACup">Delete FA Cup</button></div></div>
   <div class="admin-control-card"><div><p class="eyebrow">FIELD</p><h3>${pool.length} clubs</h3><p class="muted">${pool.join(' • ')}</p></div></div>
+  <div class="panel" style="margin:16px 0;"><div class="panel-head"><div><p class="eyebrow">MANUAL FIXTURE</p><h3>FA Cup — arrange any of the 40 clubs</h3><p class="muted">Use this section to manually create a FA Cup tie, including the 8 clubs that were previously given byes.</p></div></div><div class="form-grid admin-form"><select id="faManualHome"><option value="">Home team</option>${pool.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('')}</select><select id="faManualAway"><option value="">Away team</option>${pool.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('')}</select><select id="faManualRound"><option>Preliminary Round</option><option>Round of 32</option><option>Round of 16</option><option>Quarter-finals</option><option>Semi-finals</option><option>Final</option></select><input id="faManualDate" type="date"><button class="primary" id="addFaManualFixture">Add FA Cup Fixture</button></div></div>
   <div class="admin-list">${fs.length?fs.slice().sort((a,b)=>String(a.faRound||a.round).localeCompare(String(b.faRound||b.round))).map(f=>{const s=score(f),w=faCupWinner(f);return `<article class="admin-item"><div><b>${esc(f.faRound||f.round)}</b><span>${esc(f.homeTeam)} vs ${esc(f.awayTeam)} • ${s?`${s.h}-${s.a}${w?' • Winner: '+w:''}`:'Not played'}</span></div></article>`}).join(''):'<p class="muted">No FA Cup fixtures generated yet.</p>'}</div>`;
   $('generateFACup').onclick=generateFACupRound;
+  $('addFaManualFixture').onclick=async()=>{
+    const home=$('faManualHome').value.trim(), away=$('faManualAway').value.trim(), round=$('faManualRound').value, date=$('faManualDate').value;
+    if(!home||!away)return alert('Select both Home and Away teams.');
+    if(home===away)return alert('Home and Away teams must be different.');
+    if(!pool.includes(home)||!pool.includes(away))return alert('Select teams from the FA Cup 40-club field.');
+    const id=db.collection('fixtures').doc().id;
+    await adminSave('fixtures',id,{competition:'FA Cup',homeTeam:home,awayTeam:away,date,round,faRound:round,stage:'FA Cup',seasonId:SEASON_ID});
+    await loadData();
+    alert(`FA Cup fixture added: ${home} vs ${away}`);
+    adminTab('facup');
+  };
   $('deleteFACup').onclick=async()=>{if(!fs.length)return;if(!confirm('Delete all FA Cup fixtures for this season?'))return;for(let i=0;i<fs.length;i+=400){const b=db.batch();fs.slice(i,i+400).forEach(f=>b.delete(db.collection('fixtures').doc(f.id)));await b.commit();}await db.collection('seasons').doc(SEASON_ID).set({faCup:{currentRound:null,winners:[]}}, {merge:true});await loadData();adminTab('facup');};
 }
 async function generateFACupRound(){

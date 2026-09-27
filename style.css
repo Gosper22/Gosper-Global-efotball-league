@@ -83,4 +83,3 @@ body[data-season-theme="6"]{--bg:#16070d;--sidebar:#210a13;--panel:#2a0d18}
 .movement-card{display:flex;flex-direction:column;gap:14px}
 .movement-card label{display:grid;gap:7px;font-weight:700}
 .movement-card select{width:100%;padding:12px 14px;border:1px solid rgba(255,255,255,.14);border-radius:12px;background:rgba(255,255,255,.04);color:inherit;font:inherit}
-.manual-fixture-card{margin:18px 0}.manual-fixture-card h3{margin:0 0 6px}.manual-fixture-card .form-grid{margin-top:14px}.manual-fixture-card select,.manual-fixture-card input{min-width:0}
